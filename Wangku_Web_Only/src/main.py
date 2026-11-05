@@ -508,12 +508,21 @@ async def main(page: ft.Page):
             description = result.get("description")
             amount = result.get("amount")
             category = result.get("category")
-            if isinstance(description, str):
+            if isinstance(description, str) and description.strip():
                 state["receipt_description"].value = description.strip()[:200]
-            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
+
+            if (
+                isinstance(amount, (int, float))
+                and not isinstance(amount, bool)
+                and math.isfinite(amount)
+                and 0 < amount <= 1_000_000_000
+            ):
                 state["receipt_amount"].value = f"{amount:.2f}"
+
             if isinstance(category, str) and category in CATEGORY_OPTIONS:
                 state["receipt_category"].value = category
+
+            page.update()
             review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
