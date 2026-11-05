@@ -31,6 +31,6 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: "Wangku_Web_Only (4)/build/web"
+          path: "Wangku_Web_Only/build/web"
 
       - uses: actions/deploy-pages@v4
