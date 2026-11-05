@@ -22,6 +22,7 @@ jobs:
       - name: Build Flet app
         run: |
           uv run --with flet flet build web --yes \
+            --module-name app \
             --base-url "/${GITHUB_REPOSITORY#*/}/" \
             --route-url-strategy hash
 
