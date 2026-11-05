@@ -1,3 +1,4 @@
+
 name: Deploy Flet Website
 
 on:
@@ -20,9 +21,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: Build Flet app
+        working-directory: "Wangku_Web_Only (4)"
         run: |
-          uv run --with flet flet build web --yes \
-            --module-name app \
+          uv run --with flet-cli flet build web --yes \
             --base-url "/${GITHUB_REPOSITORY#*/}/" \
             --route-url-strategy hash
 
@@ -30,6 +31,6 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: build/web
+          path: "Wangku_Web_Only (4)/build/web"
 
       - uses: actions/deploy-pages@v4
