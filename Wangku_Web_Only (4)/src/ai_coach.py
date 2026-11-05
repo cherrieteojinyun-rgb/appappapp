@@ -91,28 +91,78 @@ async def reply(state, messages):
 
 async def analyze_receipt(state, photo):
     import base64
+    import re
 
     if isinstance(photo, bytes):
         encoded = base64.b64encode(photo).decode("ascii")
     elif isinstance(photo, str) and photo.startswith("data:image/") and ";base64," in photo:
         encoded = photo.split(",", 1)[1]
     elif isinstance(photo, str) and ":" not in photo:
+        # Assumes the camera returned base64 text, not a local file path.
         encoded = photo
     else:
-        raise CoachError("Pelayar tidak membekalkan data gambar. Sila isi butiran secara manual.")
+        raise CoachError(
+            "Pelayar tidak membekalkan data gambar. Sila isi butiran secara manual."
+        )
 
     if len(encoded) > 6 * 1024 * 1024 - 128:
         raise CoachError("Gambar terlalu besar. Sila isi butiran secara manual.")
+
     try:
         base64.b64decode(encoded, validate=True)
-    except ValueError:
-        raise CoachError("Format gambar tidak disokong. Sila isi butiran secara manual.") from None
+    except (ValueError, TypeError):
+        raise CoachError(
+            "Format gambar tidak disokong. Sila isi butiran secara manual."
+        ) from None
 
+    # The /receipt endpoint should return:
+    # {"reply": "{\"description\":\"...\", \"amount\":12.50, \"category\":\"Makanan\"}"}
     answer = await asyncio.to_thread(
-        _request, {"image": encoded}, state.get("backend_url", ""),
-        state.get("backend_token", ""), "/receipt",
+        _request,
+        {"image": encoded},
+        state.get("backend_url", ""),
+        state.get("backend_token", ""),
+        "/receipt",
     )
-    result = json.loads(answer)
+
+    # Also tolerate JSON wrapped in Markdown code fences.
+    cleaned = answer.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", cleaned, flags=re.IGNORECASE)
+
+    try:
+        result = json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise CoachError(
+            "AI tidak mengembalikan butiran resit dalam format yang betul. "
+            "Sila isi butiran secara manual."
+        ) from None
+
     if not isinstance(result, dict):
-        raise ValueError("Invalid receipt response")
-    return result
+        raise CoachError("Jawapan analisis resit tidak sah. Sila isi butiran secara manual.")
+
+    description = result.get("description")
+    amount = result.get("amount")
+    category = result.get("category")
+
+    if not isinstance(description, str):
+        description = ""
+
+    # Ensure amount is a number, or leave it blank for manual entry.
+    try:
+        amount = float(amount) if amount is not None else None
+    except (TypeError, ValueError):
+        amount = None
+
+    if amount is not None and (amount <= 0 or not math.isfinite(amount)):
+        amount = None
+
+    valid_categories = {"Makanan", "Pengangkutan", "Hiburan", "Buku", "Lain-lain"}
+    if category not in valid_categories:
+        category = "Lain-lain"
+
+    return {
+        "description": description[:200],
+        "amount": amount,
+        "category": category,
+    }
