@@ -120,7 +120,7 @@ async def main(page: ft.Page):
                 on_click=lambda e, chosen=tab: select_tab(chosen),
                 expand=True,
             ))
-        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.BLUE_GREY_50)))
+        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, "#EDEAF5")))
 
     def page_wrapper(view, width=None, include_nav=False):
         screen_width = width if width else content_width()
@@ -944,7 +944,10 @@ async def main(page: ft.Page):
                     render()
 
     async def start():
-        state["backend_url"] = await store.get("backend_url", "")
+        saved_backend_url = await store.get("backend_url", "")
+        if saved_backend_url and saved_backend_url.strip():
+            state["backend_url"] = saved_backend_url.strip().rstrip("/")
+        # Otherwise keep the URL already defined in state.
         username = await store.get("username")
         if username:
             log.info("Found a saved local demo account")
