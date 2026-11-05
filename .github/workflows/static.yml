@@ -19,10 +19,13 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
+      - name: Install Flet
+        run: uv pip install --system flet
+
       - name: Build Flet app
         run: |
-          uv run flet build web --yes \
-            --base-url "${GITHUB_REPOSITORY#*/}" \
+          flet build web --yes \
+            --base-url "/${GITHUB_REPOSITORY#*/}/" \
             --route-url-strategy hash
 
       - uses: actions/configure-pages@v5
