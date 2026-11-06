@@ -48,10 +48,7 @@ def build_payload(state, messages):
 
 
 def _request(payload, url, token, endpoint="/coach"):
-    from urllib.parse import urlparse
-    parsed = urlparse(url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise CoachError("Masukkan alamat HTTPS pelayan Wangku yang sah melalui Tetapan AI.")
+    parsed = _backend_url(url)
     if not token:
         raise CoachError("Masukkan kod akses pelayan melalui Tetapan AI. Kod ini bukan kunci Gemini.")
     request = urllib.request.Request(
@@ -74,17 +71,54 @@ def _request(payload, url, token, endpoint="/coach"):
     except urllib.error.URLError as error:
         if isinstance(error.reason, TimeoutError):
             raise CoachError("Analisis mengambil masa terlalu lama. Pelayan mungkin sedang dimulakan; cuba lagi sebentar lagi. Semak transaksi sebelum mencuba semula.") from None
-        raise CoachError("Pelayan tidak dapat dihubungi. Semak sambungan internet anda.") from None
+        raise CoachError(f"Tidak dapat menyambung ke {parsed.hostname}. Semak URL backend dan sambungan internet. Butiran: {error.reason}") from None
     except TimeoutError:
         raise CoachError("Analisis mengambil masa terlalu lama. Pelayan mungkin sedang dimulakan; cuba lagi sebentar lagi. Semak transaksi sebelum mencuba semula.") from None
-    except OSError:
-        raise CoachError("Pelayan tidak dapat dihubungi. Semak sambungan internet anda.") from None
+    except OSError as error:
+        raise CoachError(f"Tidak dapat menyambung ke {parsed.hostname}. Semak URL backend dan sambungan internet. Butiran: {error}") from None
     except (ValueError, TypeError):
         raise CoachError("Jawapan pelayan tidak dapat dibaca.") from None
     answer = result.get("reply") if isinstance(result, dict) else None
     if not isinstance(answer, str) or not answer.strip():
         raise CoachError("Tiada jawapan diterima. Cuba lagi.")
     return answer.strip()
+
+
+def _backend_url(url):
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise CoachError("Masukkan alamat HTTPS pelayan Wangku yang sah melalui Tetapan AI.")
+    return parsed
+
+
+async def check_backend(url):
+    parsed = _backend_url(url)
+
+    def request():
+        health_request = urllib.request.Request(url.rstrip("/") + "/health", method="GET")
+        try:
+            with urllib.request.urlopen(health_request, timeout=120) as response:
+                result = json.load(response)
+        except urllib.error.HTTPError as error:
+            raise CoachError(f"Ujian sambungan gagal dengan kod HTTP {error.code}.") from None
+        except urllib.error.URLError as error:
+            if isinstance(error.reason, TimeoutError):
+                raise CoachError("Ujian sambungan tamat masa. Pelayan mungkin sedang dimulakan; cuba lagi.") from None
+            raise CoachError(f"Tidak dapat menyambung ke {parsed.hostname}. Semak URL backend dan sambungan internet. Butiran: {error.reason}") from None
+        except TimeoutError:
+            raise CoachError("Ujian sambungan tamat masa. Pelayan mungkin sedang dimulakan; cuba lagi.") from None
+        except OSError as error:
+            raise CoachError(f"Tidak dapat menyambung ke {parsed.hostname}. Semak URL backend dan sambungan internet. Butiran: {error}") from None
+        except (ValueError, TypeError):
+            raise CoachError("Pelayan membalas dengan data kesihatan yang tidak sah.") from None
+
+        if not isinstance(result, dict) or result.get("status") != "ok":
+            raise CoachError("Pelayan dicapai tetapi pemeriksaan kesihatan gagal.")
+        return "Sambungan ke backend berjaya. Token dan perkhidmatan Gemini belum diuji."
+
+    return await asyncio.to_thread(request)
 
 
 async def reply(state, messages):
