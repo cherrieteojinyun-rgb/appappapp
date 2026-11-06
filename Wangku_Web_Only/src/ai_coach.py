@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import math
+import sys
 import urllib.error
 import urllib.request
 
@@ -93,8 +94,73 @@ def _backend_url(url):
     return parsed
 
 
+async def _browser_json_request(url, method, payload=None, token=None):
+    from pyodide.http import pyfetch
+
+    headers = {}
+    body = None
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+        body = json.dumps(payload)
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    try:
+        response = await pyfetch(
+            url,
+            method=method,
+            headers=headers,
+            body=body,
+        )
+    except Exception as error:
+        raise CoachError(
+            "Pelayar tidak dapat mencapai backend. Semak sambungan internet dan "
+            f"izin CORS backend. Butiran: {error}"
+        ) from None
+
+    status = int(response.status)
+    if status >= 400:
+        if status in (401, 403):
+            raise CoachError("Kod akses tidak sah atau permintaan browser tidak dibenarkan. Semak Tetapan AI dan izin CORS.")
+        if status == 429:
+            raise CoachError("Had penggunaan dicapai. Sila cuba lagi kemudian.")
+        if status in (502, 503, 504):
+            raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.")
+        raise CoachError(f"Permintaan ke backend gagal (HTTP {status}).")
+    try:
+        result = await response.json()
+    except Exception:
+        raise CoachError("Jawapan pelayan tidak dapat dibaca.") from None
+    if not isinstance(result, dict):
+        raise CoachError("Jawapan pelayan tidak dapat dibaca.")
+    return result
+
+
+async def _request_async(payload, url, token, endpoint="/coach"):
+    _backend_url(url)
+    if not token:
+        raise CoachError("Masukkan kod akses pelayan melalui Tetapan AI. Kod ini bukan kunci Gemini.")
+    if sys.platform != "emscripten":
+        return await asyncio.to_thread(_request, payload, url, token, endpoint)
+
+    result = await _browser_json_request(
+        url.rstrip("/") + endpoint,
+        "POST",
+        payload=payload,
+        token=token,
+    )
+    answer = result.get("reply")
+    if not isinstance(answer, str) or not answer.strip():
+        raise CoachError("Tiada jawapan diterima. Cuba lagi.")
+    return answer.strip()
+
+
 async def check_backend(url):
     parsed = _backend_url(url)
+    if sys.platform == "emscripten":
+        result = await _browser_json_request(url.rstrip("/") + "/health", "GET")
+        if result.get("status") != "ok":
+            raise CoachError("Pelayan dicapai tetapi pemeriksaan kesihatan gagal.")
+        return "Sambungan ke backend berjaya. Token dan perkhidmatan Gemini belum diuji."
 
     def request():
         health_request = urllib.request.Request(url.rstrip("/") + "/health", method="GET")
@@ -129,7 +195,7 @@ async def reply(state, messages):
         "baki": state["balance"], "kategori": category_totals(state["transactions"]),
         "matlamat": state["goals"],
     }, "contents": payload["contents"]}
-    return await asyncio.to_thread(_request, payload, state.get("backend_url", ""), state.get("backend_token", ""))
+    return await _request_async(payload, state.get("backend_url", ""), state.get("backend_token", ""))
 
 async def analyze_receipt(state, photo):
     if isinstance(photo, bytes):
@@ -156,8 +222,8 @@ async def analyze_receipt(state, photo):
     ):
         raise CoachError("Format gambar tidak disokong. Sila gunakan JPEG, PNG atau WebP.")
 
-    answer = await asyncio.to_thread(
-        _request, {"image": encoded}, state.get("backend_url", ""),
+    answer = await _request_async(
+        {"image": encoded}, state.get("backend_url", ""),
         state.get("backend_token", ""), "/receipt",
     )
     try:
