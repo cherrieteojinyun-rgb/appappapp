@@ -60,8 +60,8 @@ async def main(page: ft.Page):
             {"description": "Lawatan kelab", "category": "Fun", "date": "Sab, 9 Mac", "amount": 34.60},
         ],
         "chat": [],
-        "backend_url": "https://appappapp-3.onrender.com",
-        "backend_token": "Wangku_8xK29pQ7mL4vZ6nR",
+        "backend_url": "",
+        "backend_token": "",
         "coach_busy": False,
         "coach_error": "",
         "coach_session": 0,
@@ -120,7 +120,7 @@ async def main(page: ft.Page):
                 on_click=lambda e, chosen=tab: select_tab(chosen),
                 expand=True,
             ))
-        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, "#EDEAF5")))
+        return ft.Container(content=ft.Row(buttons, alignment=ft.MainAxisAlignment.SPACE_AROUND), padding=ft.Padding.symmetric(vertical=5), bgcolor=ft.Colors.WHITE, border=ft.Border.only(top=ft.BorderSide(1, ft.Colors.BLUE_GREY_50)))
 
     def page_wrapper(view, width=None, include_nav=False):
         screen_width = width if width else content_width()
@@ -508,26 +508,18 @@ async def main(page: ft.Page):
             description = result.get("description")
             amount = result.get("amount")
             category = result.get("category")
-            if isinstance(description, str) and description.strip():
+            if isinstance(description, str):
                 state["receipt_description"].value = description.strip()[:200]
-
-            if (
-                isinstance(amount, (int, float))
-                and not isinstance(amount, bool)
-                and math.isfinite(amount)
-                and 0 < amount <= 1_000_000_000
-            ):
+            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
                 state["receipt_amount"].value = f"{amount:.2f}"
-
             if isinstance(category, str) and category in CATEGORY_OPTIONS:
                 state["receipt_category"].value = category
-
-            page.update()
             review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
             review_message.value = f"{error} Anda boleh isi butiran secara manual."
         except Exception:
+            log.exception("Unexpected receipt analysis failure")
             review_message.value = "Analisis resit gagal. Sila isi butiran secara manual."
         finally:
             if state["route"] == "receipt_review" and state["receipt_message"] is review_message:
@@ -953,10 +945,7 @@ async def main(page: ft.Page):
                     render()
 
     async def start():
-        saved_backend_url = await store.get("backend_url", "")
-        if saved_backend_url and saved_backend_url.strip():
-            state["backend_url"] = saved_backend_url.strip().rstrip("/")
-        # Otherwise keep the URL already defined in state.
+        state["backend_url"] = await store.get("backend_url", "")
         username = await store.get("username")
         if username:
             log.info("Found a saved local demo account")
