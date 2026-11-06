@@ -1,6 +1,7 @@
 """Private pilot backend. Host behind an HTTPS reverse proxy; no Gemini key in APK."""
 import hmac
 import json
+import logging
 import os
 import threading
 import time
@@ -12,6 +13,7 @@ TOKENS = [t.strip() for t in os.environ.get('WANGKU_ACCESS_TOKENS', '').split(',
 GATE = threading.BoundedSemaphore(3)
 LOCK = threading.Lock()
 USAGE = defaultdict(deque)
+LOG = logging.getLogger('wangku.backend')
 ALLOWED_ORIGINS = {
     origin.strip()
     for origin in os.environ.get(
@@ -116,24 +118,17 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError, AttributeError, KeyError, OSError):
             return self.respond(400, {'error': 'invalid_request'})
         if not GATE.acquire(blocking=False):
-            return self.respond(503, {'error': 'busy'})
+            return self.respond(503, {
+                'error': 'busy',
+                'message': 'Pelayan sedang sibuk. Tunggu sebentar sebelum mencuba lagi.',
+            })
         try:
             self.respond(200, {'reply': _request(payload)})
         except CoachError as error:
             message = str(error).strip()[:300] or 'Perkhidmatan AI terganggu buat sementara waktu.'
             self.respond(503, {'error': 'provider_unavailable', 'message': message})
-        except Exception:
-            self.respond(502, {'error': 'upstream_failure'})
-        finally:
-            GATE.release()
-
-
-if __name__ == '__main__':
-    if not TOKENS or not os.environ.get('GEMINI_API_KEY'):
-        raise SystemExit('Set WANGKU_ACCESS_TOKENS and GEMINI_API_KEY on the server first.')
-    ThreadingHTTPServer(('0.0.0.0', int(os.environ.get('PORT', '8080'))), Handler).serve_forever()
-
-if __name__ == '__main__':
-    if not TOKENS or not os.environ.get('GEMINI_API_KEY'):
-        raise SystemExit('Set WANGKU_ACCESS_TOKENS and GEMINI_API_KEY on the server first.')
-    ThreadingHTTPServer(('0.0.0.0', int(os.environ.get('PORT', '8080'))), Handler).serve_forever()
+        except Exception as error:
+            LOG.error('Unexpected error while processing %s: %s', self.path, type(error).__name__)
+            self.respond(502, {
+                'error': 'upstream_failure',
+                'message': 'Backend mengalami ralat tidak dijangka. Semak log Render untuk mengenal pasti punca.',
