@@ -134,9 +134,9 @@ def _request(payload, url, token, endpoint="/coach"):
             "Permintaan gagal. Semak alamat pelayan dan cuba lagi."
         ) from None
 
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise CoachError(
-            "Pelayan tidak dapat dihubungi. Semak sambungan internet."
+            f"RECEIPT CONNECTION ERROR: {type(error).__name__}: {error}"
         ) from None
 
     except (ValueError, TypeError):
