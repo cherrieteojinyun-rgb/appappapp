@@ -12,6 +12,14 @@ TOKENS = [t.strip() for t in os.environ.get('WANGKU_ACCESS_TOKENS', '').split(',
 GATE = threading.BoundedSemaphore(3)
 LOCK = threading.Lock()
 USAGE = defaultdict(deque)
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.environ.get(
+        'WANGKU_ALLOWED_ORIGINS',
+        'https://cherrieteojinyun-rgb.github.io',
+    ).split(',')
+    if origin.strip()
+}
 
 
 def validate(data):
@@ -45,8 +53,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('Vary', 'Origin')
+        origin = self.headers.get('Origin')
+        if origin in ALLOWED_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+            self.send_header('Access-Control-Max-Age', '600')
         self.end_headers()
         self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        if self.path not in ('/health', '/coach', '/receipt'):
+            return self.respond(404, {'error': 'not_found'})
+        origin = self.headers.get('Origin')
+        requested_method = self.headers.get('Access-Control-Request-Method', '').upper()
+        if origin not in ALLOWED_ORIGINS or requested_method not in ('GET', 'POST'):
+            return self.respond(403, {'error': 'origin_or_method_not_allowed'})
+        requested_headers = {
+            header.strip().lower()
+            for header in self.headers.get('Access-Control-Request-Headers', '').split(',')
+            if header.strip()
+        }
+        if not requested_headers.issubset({'authorization', 'content-type'}):
+            return self.respond(403, {'error': 'headers_not_allowed'})
+
+        self.send_response(204)
+        self.send_header('Content-Length', '0')
+        self.send_header('Vary', 'Origin')
+        self.send_header('Access-Control-Allow-Origin', origin)
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+        self.send_header('Access-Control-Max-Age', '600')
+        self.end_headers()
 
     def do_GET(self):
         self.respond(200 if self.path == '/health' else 404, {'status': 'ok' if self.path == '/health' else 'not_found'})
@@ -87,6 +126,11 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             GATE.release()
 
+
+if __name__ == '__main__':
+    if not TOKENS or not os.environ.get('GEMINI_API_KEY'):
+        raise SystemExit('Set WANGKU_ACCESS_TOKENS and GEMINI_API_KEY on the server first.')
+    ThreadingHTTPServer(('0.0.0.0', int(os.environ.get('PORT', '8080'))), Handler).serve_forever()
 
 if __name__ == '__main__':
     if not TOKENS or not os.environ.get('GEMINI_API_KEY'):
