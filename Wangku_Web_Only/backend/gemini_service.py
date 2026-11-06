@@ -69,7 +69,9 @@ def _request(payload):
             raise CoachError('Akses Gemini gagal. Semak kunci API, kebenaran dan model anda.') from None
         if error.code == 404:
             raise CoachError('Model Gemini tidak tersedia. Tetapkan GEMINI_MODEL kepada model yang tersedia dalam AI Studio.') from None
-        raise CoachError('Perkhidmatan Gemini terganggu. Sila cuba lagi kemudian.') from None
+        if error.code >= 500:
+            raise CoachError(f'Google Gemini sedang terganggu (HTTP {error.code}). Cuba lagi kemudian; jika berulang, semak status Google AI dan log backend Render.') from None
+        raise CoachError(f'Google Gemini menolak permintaan (HTTP {error.code}). Semak tetapan model, API dan format imej.') from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise CoachError('Sambungan gagal atau tamat masa. Semak internet dan cuba lagi.') from None
     except (ValueError, TypeError):
