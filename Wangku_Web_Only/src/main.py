@@ -487,12 +487,32 @@ async def main(page: ft.Page):
             return
 
         state["receipt_photo"] = photo
-        state["receipt_description"] = ft.TextField(label="Apa yang dibeli?", border_radius=14)
-        state["receipt_amount"] = ft.TextField(label="Jumlah (RM)", prefix=ft.Text("RM "), keyboard_type=ft.KeyboardType.NUMBER, border_radius=14)
+        receipt_field_style = {
+            "filled": True,
+            "fill_color": ft.Colors.WHITE,
+            "border_color": ft.Colors.BLUE_GREY_100,
+            "focused_border_color": PRIMARY,
+            "border_radius": 14,
+            "content_padding": 14,
+        }
+        state["receipt_description"] = ft.TextField(
+            label="Apa yang dibeli?", **receipt_field_style,
+        )
+        state["receipt_amount"] = ft.TextField(
+            label="Jumlah (RM)",
+            prefix=ft.Text("RM "),
+            keyboard_type=ft.KeyboardType.NUMBER,
+            **receipt_field_style,
+        )
         state["receipt_category"] = ft.Dropdown(
             value="Lain-lain", label="Kategori",
             options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
+            filled=True,
+            fill_color=ft.Colors.WHITE,
+            border_color=ft.Colors.BLUE_GREY_100,
+            focused_border_color=PRIMARY,
             border_radius=14,
+            content_padding=14,
         )
         state["receipt_message"] = ft.Text("Sedang menganalisis resit…", size=12, color=MUTED)
         review_message = state["receipt_message"]
