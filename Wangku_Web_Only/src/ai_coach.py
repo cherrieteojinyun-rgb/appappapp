@@ -68,10 +68,12 @@ def _request(payload, url, token, endpoint="/coach"):
         if error.code == 429:
             raise CoachError("Had penggunaan dicapai. Sila cuba lagi kemudian.") from None
         if error.code in (502, 503, 504):
-            message = error_body.get("message") if error_body.get("error") == "provider_unavailable" else None
+            message = error_body.get("message") if error_body.get("error") in (
+                "provider_unavailable", "busy", "upstream_failure",
+            ) else None
             if isinstance(message, str) and message.strip():
                 raise CoachError(message.strip()[:300]) from None
-            raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.") from None
+            raise CoachError(f"Backend atau Gemini gagal buat sementara waktu (HTTP {error.code}). Semak status Render dan cuba lagi.") from None
         raise CoachError("Permintaan gagal. Semak alamat pelayan dan cuba lagi.") from None
     except urllib.error.URLError as error:
         if isinstance(error.reason, TimeoutError):
@@ -140,10 +142,12 @@ async def _browser_json_request(url, method, payload=None, token=None):
         if status == 429:
             raise CoachError("Had penggunaan dicapai. Sila cuba lagi kemudian.")
         if status in (502, 503, 504):
-            message = error_body.get("message") if isinstance(error_body, dict) and error_body.get("error") == "provider_unavailable" else None
+            message = error_body.get("message") if isinstance(error_body, dict) and error_body.get("error") in (
+                "provider_unavailable", "busy", "upstream_failure",
+            ) else None
             if isinstance(message, str) and message.strip():
                 raise CoachError(message.strip()[:300])
-            raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.")
+            raise CoachError(f"Backend atau Gemini gagal buat sementara waktu (HTTP {status}). Semak status Render dan cuba lagi.")
         raise CoachError(f"Permintaan ke backend gagal (HTTP {status}).")
     try:
         result = await response.json()
@@ -259,7 +263,3 @@ async def analyze_receipt(state, photo):
     if amount is not None and (
         isinstance(amount, bool)
         or not isinstance(amount, (int, float))
-        or (isinstance(amount, float) and not math.isfinite(amount))
-    ):
-        raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
-    return result
