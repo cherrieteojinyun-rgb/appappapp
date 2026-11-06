@@ -132,3 +132,12 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(502, {
                 'error': 'upstream_failure',
                 'message': 'Backend mengalami ralat tidak dijangka. Semak log Render untuk mengenal pasti punca.',
+            })
+        finally:
+            GATE.release()
+
+
+if __name__ == '__main__':
+    if not TOKENS or not os.environ.get('GEMINI_API_KEY'):
+        raise SystemExit('Set WANGKU_ACCESS_TOKENS and GEMINI_API_KEY on the server first.')
+    ThreadingHTTPServer(('0.0.0.0', int(os.environ.get('PORT', '8080'))), Handler).serve_forever()
