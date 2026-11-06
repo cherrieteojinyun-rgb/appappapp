@@ -263,3 +263,7 @@ async def analyze_receipt(state, photo):
     if amount is not None and (
         isinstance(amount, bool)
         or not isinstance(amount, (int, float))
+        or (isinstance(amount, float) and not math.isfinite(amount))
+    ):
+        raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
+    return result
