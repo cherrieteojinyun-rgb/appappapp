@@ -26,6 +26,7 @@ CATEGORY_OPTIONS = {
     "Buku": "Books",
     "Lain-lain": "Other",
 }
+DEFAULT_BACKEND_URL = "https://appappapp-3.onrender.com"
 
 
 async def main(page: ft.Page):
@@ -60,7 +61,7 @@ async def main(page: ft.Page):
             {"description": "Lawatan kelab", "category": "Fun", "date": "Sab, 9 Mac", "amount": 34.60},
         ],
         "chat": [],
-        "backend_url": "",
+        "backend_url": DEFAULT_BACKEND_URL,
         "backend_token": "",
         "coach_busy": False,
         "coach_error": "",
@@ -945,7 +946,7 @@ async def main(page: ft.Page):
                     render()
 
     async def start():
-        state["backend_url"] = await store.get("backend_url", "")
+        state["backend_url"] = await store.get("backend_url") or DEFAULT_BACKEND_URL
         username = await store.get("username")
         if username:
             log.info("Found a saved local demo account")
