@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import io
 import json
 import sys
@@ -30,6 +31,33 @@ class CoachTests(unittest.TestCase):
             body=json.loads(req.data)
             self.assertNotIn('systemInstruction',body)
             self.assertNotIn('GEMINI_API_KEY',Path(ai_coach.__file__).read_text())
+    def test_receipt_image_is_sent_for_analysis(self):
+        image = b'\x89PNG\r\n\x1a\nreceipt'
+        with patch.object(ai_coach, '_request', return_value=json.dumps({
+            'description': 'Makan tengah hari', 'amount': 12.5, 'category': 'Makanan',
+        })) as request:
+            result = asyncio.run(ai_coach.analyze_receipt(STATE, image))
+        self.assertEqual(result['description'], 'Makan tengah hari')
+        self.assertEqual(request.call_args.args[1:], (STATE['backend_url'], STATE['backend_token'], '/receipt'))
+        self.assertEqual(base64.b64decode(request.call_args.args[0]['image']), image)
+    def test_receipt_accepts_camera_data_uri(self):
+        image = b'\xff\xd8\xffreceipt'
+        photo = 'data:image/jpeg;base64,' + base64.b64encode(image).decode('ascii')
+        with patch.object(ai_coach, '_request', return_value=json.dumps({
+            'description': 'Pembelian', 'amount': None, 'category': 'Lain-lain',
+        })) as request:
+            asyncio.run(ai_coach.analyze_receipt(STATE, photo))
+        self.assertEqual(request.call_args.args[0]['image'], base64.b64encode(image).decode('ascii'))
+    def test_receipt_rejects_non_image_before_request(self):
+        with patch.object(ai_coach, '_request') as request:
+            with self.assertRaises(ai_coach.CoachError):
+                asyncio.run(ai_coach.analyze_receipt(STATE, b'not an image'))
+        request.assert_not_called()
+    def test_receipt_rejects_malformed_analysis_response(self):
+        image = b'\xff\xd8\xffreceipt'
+        with patch.object(ai_coach, '_request', return_value='not json'):
+            with self.assertRaises(ai_coach.CoachError):
+                asyncio.run(ai_coach.analyze_receipt(STATE, image))
     def test_auth_and_health(self):
         import threading,urllib.request,urllib.error
         from http.server import ThreadingHTTPServer
@@ -47,3 +75,4 @@ class CoachTests(unittest.TestCase):
         finally:http.shutdown();http.server_close();thread.join()
 
 if __name__=='__main__':unittest.main()
+
