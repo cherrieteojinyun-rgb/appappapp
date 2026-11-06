@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import sys
+import types
 import urllib.error
 import urllib.request
 import unittest
@@ -44,6 +45,107 @@ class CoachTests(unittest.TestCase):
     def test_backend_health_check_requires_https(self):
         with self.assertRaises(ai_coach.CoachError):
             asyncio.run(ai_coach.check_backend('http://example.com'))
+    def test_browser_receipt_request_uses_fetch(self):
+        requests = []
+
+        class Response:
+            status = 200
+
+            async def json(self):
+                return {'reply': json.dumps({
+                    'description': 'Makan tengah hari',
+                    'amount': 12.5,
+                    'category': 'Makanan',
+                })}
+
+        async def fake_pyfetch(url, **kwargs):
+            requests.append((url, kwargs))
+            return Response()
+
+        pyodide = types.ModuleType('pyodide')
+        http = types.ModuleType('pyodide.http')
+        http.pyfetch = fake_pyfetch
+        pyodide.http = http
+        with patch.dict(sys.modules, {'pyodide': pyodide, 'pyodide.http': http}):
+            with patch.object(ai_coach.sys, 'platform', 'emscripten'):
+                result = asyncio.run(ai_coach._request_async(
+                    {'image': 'encoded-image'},
+                    STATE['backend_url'],
+                    STATE['backend_token'],
+                    '/receipt',
+                ))
+
+        self.assertIn('Makan tengah hari', result)
+        url, request = requests[0]
+        self.assertEqual(url, 'https://example.com/receipt')
+        self.assertEqual(request['method'], 'POST')
+        self.assertEqual(request['headers']['Authorization'], 'Bearer device-token')
+        self.assertEqual(json.loads(request['body']), {'image': 'encoded-image'})
+    def test_browser_health_check_uses_fetch(self):
+        requests = []
+
+        class Response:
+            status = 200
+
+            async def json(self):
+                return {'status': 'ok'}
+
+        async def fake_pyfetch(url, **kwargs):
+            requests.append((url, kwargs))
+            return Response()
+
+        pyodide = types.ModuleType('pyodide')
+        http = types.ModuleType('pyodide.http')
+        http.pyfetch = fake_pyfetch
+        pyodide.http = http
+        with patch.dict(sys.modules, {'pyodide': pyodide, 'pyodide.http': http}):
+            with patch.object(ai_coach.sys, 'platform', 'emscripten'):
+                result = asyncio.run(ai_coach.check_backend(STATE['backend_url']))
+
+        self.assertIn('berjaya', result)
+        self.assertEqual(requests[0][0], 'https://example.com/health')
+        self.assertEqual(requests[0][1]['method'], 'GET')
+    def test_backend_allows_pages_cors_preflight(self):
+        import threading
+        from http.server import ThreadingHTTPServer
+        http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
+        thread=threading.Thread(target=http.serve_forever,daemon=True);thread.start()
+        try:
+            req=urllib.request.Request(
+                f'http://127.0.0.1:{http.server_port}/receipt',
+                method='OPTIONS',
+                headers={
+                    'Origin':'https://cherrieteojinyun-rgb.github.io',
+                    'Access-Control-Request-Method':'POST',
+                    'Access-Control-Request-Headers':'authorization,content-type',
+                },
+            )
+            with urllib.request.urlopen(req) as response:
+                self.assertEqual(response.status,204)
+                self.assertEqual(response.headers['Access-Control-Allow-Origin'],'https://cherrieteojinyun-rgb.github.io')
+                self.assertIn('authorization',response.headers['Access-Control-Allow-Headers'].lower())
+        finally:
+            http.shutdown();http.server_close();thread.join()
+    def test_backend_rejects_unlisted_cors_origin(self):
+        import threading
+        from http.server import ThreadingHTTPServer
+        http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
+        thread=threading.Thread(target=http.serve_forever,daemon=True);thread.start()
+        try:
+            req=urllib.request.Request(
+                f'http://127.0.0.1:{http.server_port}/receipt',
+                method='OPTIONS',
+                headers={
+                    'Origin':'https://malicious.example',
+                    'Access-Control-Request-Method':'POST',
+                    'Access-Control-Request-Headers':'authorization,content-type',
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(req)
+            self.assertEqual(error.exception.code,403)
+        finally:
+            http.shutdown();http.server_close();thread.join()
     def test_client_request(self):
         with patch('urllib.request.urlopen',return_value=io.BytesIO(b'{"reply":"Hai"}')) as mock:
             self.assertEqual(asyncio.run(ai_coach.reply(STATE,[('you','Hai')])), 'Hai')
