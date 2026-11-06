@@ -61,7 +61,7 @@ def _request(payload, url, token, endpoint="/coach"):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=50) as response:
+        with urllib.request.urlopen(request, timeout=120) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code in (401, 403):
@@ -71,7 +71,13 @@ def _request(payload, url, token, endpoint="/coach"):
         if error.code in (502, 503, 504):
             raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.") from None
         raise CoachError("Permintaan gagal. Semak alamat pelayan dan cuba lagi.") from None
-    except (urllib.error.URLError, TimeoutError, OSError):
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, TimeoutError):
+            raise CoachError("Analisis mengambil masa terlalu lama. Pelayan mungkin sedang dimulakan; cuba lagi sebentar lagi. Semak transaksi sebelum mencuba semula.") from None
+        raise CoachError("Pelayan tidak dapat dihubungi. Semak sambungan internet anda.") from None
+    except TimeoutError:
+        raise CoachError("Analisis mengambil masa terlalu lama. Pelayan mungkin sedang dimulakan; cuba lagi sebentar lagi. Semak transaksi sebelum mencuba semula.") from None
+    except OSError:
         raise CoachError("Pelayan tidak dapat dihubungi. Semak sambungan internet anda.") from None
     except (ValueError, TypeError):
         raise CoachError("Jawapan pelayan tidak dapat dibaca.") from None
@@ -138,4 +144,3 @@ async def analyze_receipt(state, photo):
     ):
         raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
     return result
-
