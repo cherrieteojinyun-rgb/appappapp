@@ -36,6 +36,17 @@ class CoachTests(unittest.TestCase):
         with patch('urllib.request.urlopen', side_effect=error):
             with self.assertRaisesRegex(ai_coach.CoachError, 'example.com.*name lookup failed'):
                 ai_coach._request({}, 'https://example.com', 'token')
+    def test_provider_error_message_is_shown_by_client(self):
+        body = json.dumps({
+            'error': 'provider_unavailable',
+            'message': 'Kunci Gemini belum ditetapkan.',
+        }).encode()
+        error = urllib.error.HTTPError(
+            'https://example.com/receipt', 503, 'Unavailable', {}, io.BytesIO(body),
+        )
+        with patch('urllib.request.urlopen', side_effect=error):
+            with self.assertRaisesRegex(ai_coach.CoachError, 'Kunci Gemini belum ditetapkan'):
+                ai_coach._request({}, STATE['backend_url'], STATE['backend_token'], '/receipt')
     def test_backend_health_check(self):
         with patch('urllib.request.urlopen', return_value=io.BytesIO(b'{"status":"ok"}')) as urlopen:
             result = asyncio.run(ai_coach.check_backend('https://example.com'))
@@ -81,6 +92,31 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(request['method'], 'POST')
         self.assertEqual(request['headers']['Authorization'], 'Bearer device-token')
         self.assertEqual(json.loads(request['body']), {'image': 'encoded-image'})
+    def test_browser_provider_error_message_is_shown(self):
+        class Response:
+            status = 503
+
+            async def json(self):
+                return {
+                    'error': 'provider_unavailable',
+                    'message': 'Model Gemini tidak tersedia.',
+                }
+
+        async def fake_pyfetch(url, **kwargs):
+            return Response()
+
+        pyodide = types.ModuleType('pyodide')
+        http = types.ModuleType('pyodide.http')
+        http.pyfetch = fake_pyfetch
+        pyodide.http = http
+        with patch.dict(sys.modules, {'pyodide': pyodide, 'pyodide.http': http}):
+            with self.assertRaisesRegex(ai_coach.CoachError, 'Model Gemini tidak tersedia'):
+                asyncio.run(ai_coach._browser_json_request(
+                    'https://example.com/receipt',
+                    'POST',
+                    payload={'image': 'encoded-image'},
+                    token='device-token',
+                ))
     def test_browser_health_check_uses_fetch(self):
         requests = []
 
@@ -146,6 +182,29 @@ class CoachTests(unittest.TestCase):
             self.assertEqual(error.exception.code,403)
         finally:
             http.shutdown();http.server_close();thread.join()
+    def test_backend_returns_safe_provider_error_message(self):
+        import threading
+        from http.server import ThreadingHTTPServer
+        http=ThreadingHTTPServer(('127.0.0.1',0),server.Handler)
+        thread=threading.Thread(target=http.serve_forever,daemon=True);thread.start()
+        data=json.dumps({'context':{},'contents':[{'role':'user','parts':[{'text':'Hai'}]}]}).encode()
+        req=urllib.request.Request(
+            f'http://127.0.0.1:{http.server_port}/coach',
+            data=data,
+            headers={'Authorization':'Bearer test-token','Content-Type':'application/json'},
+        )
+        try:
+            with patch.object(server,'TOKENS',['test-token']),patch.object(
+                server,'_request',side_effect=server.CoachError('Akses Gemini gagal. Semak kunci API.')
+            ):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(req)
+            self.assertEqual(error.exception.code,503)
+            body=json.loads(error.exception.read())
+            self.assertEqual(body['error'],'provider_unavailable')
+            self.assertEqual(body['message'],'Akses Gemini gagal. Semak kunci API.')
+        finally:
+            http.shutdown();http.server_close();thread.join()
     def test_client_request(self):
         with patch('urllib.request.urlopen',return_value=io.BytesIO(b'{"reply":"Hai"}')) as mock:
             self.assertEqual(asyncio.run(ai_coach.reply(STATE,[('you','Hai')])), 'Hai')
@@ -198,4 +257,3 @@ class CoachTests(unittest.TestCase):
         finally:http.shutdown();http.server_close();thread.join()
 
 if __name__=='__main__':unittest.main()
-
