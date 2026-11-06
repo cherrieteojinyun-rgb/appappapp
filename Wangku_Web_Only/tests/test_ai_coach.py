@@ -3,6 +3,8 @@ import base64
 import io
 import json
 import sys
+import urllib.error
+import urllib.request
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -23,6 +25,25 @@ class CoachTests(unittest.TestCase):
         with self.assertRaises(ai_coach.CoachError): ai_coach._request({}, 'http://example.com', 'token')
     def test_token_required(self):
         with self.assertRaises(ai_coach.CoachError): ai_coach._request({}, 'https://example.com', '')
+    def test_slow_backend_timeout_is_longer_and_actionable(self):
+        with patch('urllib.request.urlopen', side_effect=TimeoutError) as urlopen:
+            with self.assertRaisesRegex(ai_coach.CoachError, 'Analisis mengambil masa terlalu lama'):
+                ai_coach._request({}, 'https://example.com', 'token')
+        self.assertEqual(urlopen.call_args.kwargs['timeout'], 120)
+    def test_connection_error_identifies_backend_host(self):
+        error = urllib.error.URLError('name lookup failed')
+        with patch('urllib.request.urlopen', side_effect=error):
+            with self.assertRaisesRegex(ai_coach.CoachError, 'example.com.*name lookup failed'):
+                ai_coach._request({}, 'https://example.com', 'token')
+    def test_backend_health_check(self):
+        with patch('urllib.request.urlopen', return_value=io.BytesIO(b'{"status":"ok"}')) as urlopen:
+            result = asyncio.run(ai_coach.check_backend('https://example.com'))
+        self.assertIn('berjaya', result)
+        self.assertTrue(urlopen.call_args.args[0].full_url.endswith('/health'))
+        self.assertEqual(urlopen.call_args.kwargs['timeout'], 120)
+    def test_backend_health_check_requires_https(self):
+        with self.assertRaises(ai_coach.CoachError):
+            asyncio.run(ai_coach.check_backend('http://example.com'))
     def test_client_request(self):
         with patch('urllib.request.urlopen',return_value=io.BytesIO(b'{"reply":"Hai"}')) as mock:
             self.assertEqual(asyncio.run(ai_coach.reply(STATE,[('you','Hai')])), 'Hai')
