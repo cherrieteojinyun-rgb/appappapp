@@ -119,8 +119,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(503, {'error': 'busy'})
         try:
             self.respond(200, {'reply': _request(payload)})
-        except CoachError:
-            self.respond(503, {'error': 'provider_unavailable'})
+        except CoachError as error:
+            message = str(error).strip()[:300] or 'Perkhidmatan AI terganggu buat sementara waktu.'
+            self.respond(503, {'error': 'provider_unavailable', 'message': message})
         except Exception:
             self.respond(502, {'error': 'upstream_failure'})
         finally:
