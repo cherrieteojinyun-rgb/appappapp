@@ -62,11 +62,15 @@ def _request(payload, url, token, endpoint="/coach"):
         with urllib.request.urlopen(request, timeout=120) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
+        error_body = _read_error_body(error)
         if error.code in (401, 403):
             raise CoachError("Kod akses tidak sah. Semak Tetapan AI.") from None
         if error.code == 429:
             raise CoachError("Had penggunaan dicapai. Sila cuba lagi kemudian.") from None
         if error.code in (502, 503, 504):
+            message = error_body.get("message") if error_body.get("error") == "provider_unavailable" else None
+            if isinstance(message, str) and message.strip():
+                raise CoachError(message.strip()[:300]) from None
             raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.") from None
         raise CoachError("Permintaan gagal. Semak alamat pelayan dan cuba lagi.") from None
     except urllib.error.URLError as error:
@@ -94,6 +98,14 @@ def _backend_url(url):
     return parsed
 
 
+def _read_error_body(error):
+    try:
+        result = json.loads(error.read().decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, ValueError):
+        return {}
+    return result if isinstance(result, dict) else {}
+
+
 async def _browser_json_request(url, method, payload=None, token=None):
     from pyodide.http import pyfetch
 
@@ -119,11 +131,18 @@ async def _browser_json_request(url, method, payload=None, token=None):
 
     status = int(response.status)
     if status >= 400:
+        try:
+            error_body = await response.json()
+        except Exception:
+            error_body = {}
         if status in (401, 403):
             raise CoachError("Kod akses tidak sah atau permintaan browser tidak dibenarkan. Semak Tetapan AI dan izin CORS.")
         if status == 429:
             raise CoachError("Had penggunaan dicapai. Sila cuba lagi kemudian.")
         if status in (502, 503, 504):
+            message = error_body.get("message") if isinstance(error_body, dict) and error_body.get("error") == "provider_unavailable" else None
+            if isinstance(message, str) and message.strip():
+                raise CoachError(message.strip()[:300])
             raise CoachError("Perkhidmatan AI terganggu buat sementara waktu. Sila cuba lagi.")
         raise CoachError(f"Permintaan ke backend gagal (HTTP {status}).")
     try:
