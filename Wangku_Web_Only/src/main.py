@@ -7,7 +7,7 @@ import logging
 import flet as ft
 import flet_camera as fcam
 
-from ai_coach import CoachError, analyze_receipt, reply
+from ai_coach import CoachError, analyze_receipt, check_backend, reply
 from components.brand import mascot, wordmark
 from finance import distribute_savings, money, number
 from storage import LocalStore
@@ -898,7 +898,20 @@ async def main(page: ft.Page):
 
     def configure_ai(event=None):
         url = ft.TextField(label="Alamat HTTPS pelayan Wangku", value=state["backend_url"], hint_text="https://pelayan-anda.example", border_radius=14)
+        connection_status = ft.Text("", size=12, color=MUTED)
         token = ft.TextField(label="Kod akses pelayan (bukan kunci Gemini)", value=state["backend_token"], password=True, can_reveal_password=True, border_radius=14)
+        async def test_backend(event=None):
+            connection_status.value = "Sedang menguji sambungan…"
+            connection_status.color = MUTED
+            page.update()
+            try:
+                connection_status.value = await check_backend((url.value or "").strip().rstrip("/"))
+                connection_status.color = ft.Colors.GREEN_700
+            except CoachError as error:
+                connection_status.value = str(error)
+                connection_status.color = ft.Colors.ERROR
+            page.update()
+
         async def save_settings(event=None):
             state["backend_url"] = (url.value or "").strip().rstrip("/")
             state["backend_token"] = (token.value or "").strip()
@@ -907,8 +920,12 @@ async def main(page: ft.Page):
             render()
         page.show_dialog(ft.AlertDialog(
             modal=True, title=ft.Text("Tetapan AI"),
-            content=ft.Column([url, token, ft.Text("Kod akses disimpan untuk sesi ini sahaja. Jangan masukkan kunci Gemini di sini.", size=12)], tight=True, width=330),
-            actions=[ft.TextButton("Batal", on_click=lambda e: page.pop_dialog()), ft.TextButton("Simpan", on_click=save_settings)],
+            content=ft.Column([url, token, ft.Text("Kod akses disimpan untuk sesi ini sahaja. Jangan masukkan kunci Gemini di sini.", size=12), connection_status], tight=True, width=330),
+            actions=[
+                ft.TextButton("Uji sambungan", on_click=test_backend),
+                ft.TextButton("Batal", on_click=lambda e: page.pop_dialog()),
+                ft.TextButton("Simpan", on_click=save_settings),
+            ],
         ))
 
     async def send_message(event=None, suggested=None):
