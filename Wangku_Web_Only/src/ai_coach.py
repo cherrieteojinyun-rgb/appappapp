@@ -1,6 +1,3 @@
-
-"""Wangku AI connection. Gemini API keys stay on the backend."""
-
 import asyncio
 import base64
 import binascii
@@ -230,38 +227,38 @@ def _parse_receipt(answer):
     if not isinstance(result, dict):
         raise CoachError("Format jawapan resit tidak sah.")
 
+    items = result.get("items")
+    if isinstance(items, list):
+        parsed = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            price = item.get("price")
+            if isinstance(price, bool):
+                continue
+            try:
+                numeric = float(price)
+            except (TypeError, ValueError):
+                continue
+            if not name or not math.isfinite(numeric) or numeric < 0:
+                continue
+            parsed.append({"name": name[:200], "price": round(numeric, 2)})
+        if parsed:
+            return {"items": parsed}
+
     description = result.get("description")
     amount = result.get("amount")
-    category = result.get("category")
+    if isinstance(description, str) and description.strip():
+        try:
+            numeric = float(amount) if amount is not None else 0.0
+        except (TypeError, ValueError):
+            numeric = 0.0
+        if isinstance(amount, bool) or not math.isfinite(numeric) or numeric < 0:
+            raise CoachError("AI tidak dapat membaca maklumat resit. Cuba gambar lain.")
+        return {"items": [{"name": description.strip()[:200], "price": round(numeric, 2)}]}
 
-    if not isinstance(description, str) or not description.strip():
-        description = "Perbelanjaan"
-
-    if amount is not None:
-        if (
-            isinstance(amount, bool)
-            or not isinstance(amount, (int, float))
-            or not math.isfinite(amount)
-            or amount < 0
-        ):
-            amount = None
-
-    allowed_categories = {
-        "Makanan",
-        "Pengangkutan",
-        "Hiburan",
-        "Buku",
-        "Lain-lain",
-    }
-
-    if category not in allowed_categories:
-        category = "Lain-lain"
-
-    return {
-        "description": description.strip()[:200],
-        "amount": amount,
-        "category": category,
-    }
+    raise CoachError("AI tidak dapat membaca maklumat resit. Cuba gambar lain.")
 
 
 async def analyze_receipt(state, photo):
@@ -276,3 +273,7 @@ async def analyze_receipt(state, photo):
     )
 
     return _parse_receipt(answer)
+
+
+# This file intentionally remains compatible with the older single-value receipt schema.
+# The app logic now prefers the itemized list returned by Gemini when available.

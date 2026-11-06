@@ -74,6 +74,8 @@ async def main(page: ft.Page):
         "receipt_amount": None,
         "receipt_category": None,
         "receipt_message": None,
+        "receipt_items": [],
+        "receipt_total": 0.0,
         "onboarding": {"allowance": "", "frequency": "Weekly", "savings_target": "", "saved": "0", "dream_item": "", "dream_price": "", "months": "3"},
     }
     state["goals"] = [dict(state["goal"])]
@@ -167,8 +169,14 @@ async def main(page: ft.Page):
             page.add(page_wrapper(view, width=content_width()))
         elif route == "receipt_review":
             view = scanner.review(
-                state["receipt_photo"], state["receipt_description"], state["receipt_amount"],
-                state["receipt_category"], state["receipt_message"], save_receipt, retake_receipt, close_scanner, state.get("receipt_busy", False),
+                state["receipt_photo"],
+                state.get("receipt_items", []),
+                state.get("receipt_total", 0.0),
+                state["receipt_message"],
+                save_receipt,
+                retake_receipt,
+                close_scanner,
+                state.get("receipt_busy", False),
             )
             page.add(page_wrapper(view, width=content_width()))
         elif route == "app":
@@ -486,13 +494,8 @@ async def main(page: ft.Page):
             return
 
         state["receipt_photo"] = photo
-        state["receipt_description"] = ft.TextField(label="Apa yang dibeli?", border_radius=14)
-        state["receipt_amount"] = ft.TextField(label="Jumlah (RM)", prefix=ft.Text("RM "), keyboard_type=ft.KeyboardType.NUMBER, border_radius=14)
-        state["receipt_category"] = ft.Dropdown(
-            value="Lain-lain", label="Kategori",
-            options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
-            border_radius=14,
-        )
+        state["receipt_items"] = []
+        state["receipt_total"] = 0.0
         state["receipt_message"] = ft.Text("Sedang menganalisis resit…", size=12, color=MUTED)
         review_message = state["receipt_message"]
         state["route"] = "receipt_review"
@@ -505,25 +508,29 @@ async def main(page: ft.Page):
             log.info("Receipt analysis response received")
             if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
                 return
-            description = result.get("description")
-            amount = result.get("amount")
-            category = result.get("category")
-            if isinstance(description, str) and description.strip():
-                state["receipt_description"].value = description.strip()[:200]
 
-            if (
-                isinstance(amount, (int, float))
-                and not isinstance(amount, bool)
-                and math.isfinite(amount)
-                and 0 < amount <= 1_000_000_000
-            ):
-                state["receipt_amount"].value = f"{amount:.2f}"
+            items = result.get("items", []) if isinstance(result, dict) else []
+            if not isinstance(items, list):
+                raise ValueError("Invalid receipt item list")
 
-            if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                state["receipt_category"].value = category
+            parsed = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", "")).strip()
+                price = item.get("price")
+                if isinstance(price, bool):
+                    continue
+                try:
+                    numeric = float(price)
+                except (TypeError, ValueError):
+                    continue
+                if name and math.isfinite(numeric) and numeric >= 0:
+                    parsed.append({"name": name[:200], "price": round(numeric, 2)})
 
-            page.update()
-            review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
+            state["receipt_items"] = parsed
+            state["receipt_total"] = round(sum(item["price"] for item in parsed), 2)
+            review_message.value = "Semak senarai item dan simpan transaksi yang telah dikenal pasti."
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
             review_message.value = f"{error} Anda boleh isi butiran secara manual."
@@ -556,18 +563,25 @@ async def main(page: ft.Page):
             log.warning("Camera preview could not resume: %s", error)
 
     async def save_receipt():
-        description = (state["receipt_description"].value or "").strip()
-        amount = number(state["receipt_amount"].value)
-        if not description or amount is None or amount <= 0:
-            state["receipt_message"].value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
+        items = state.get("receipt_items", [])
+        if not items:
+            state["receipt_message"].value = "Tiada item resit yang sah untuk disimpan."
             page.update()
             return
-        category = CATEGORY_OPTIONS.get(state["receipt_category"].value, "Other")
-        state["transactions"].insert(0, {"description": description, "category": category, "date": "Sebentar tadi · imbasan", "amount": amount})
+
+        for item in items:
+            name = str(item.get("name", "")).strip()
+            price = item.get("price")
+            if not name or not isinstance(price, (int, float)) or not math.isfinite(float(price)) or float(price) <= 0:
+                continue
+            state["transactions"].insert(0, {"description": name, "category": "Other", "date": "Sebentar tadi · imbasan", "amount": round(float(price), 2)})
+
         await persist_transactions()
         state["camera"] = None
         state["camera_ready"] = False
         state["receipt_photo"] = None
+        state["receipt_items"] = []
+        state["receipt_total"] = 0.0
         state["route"] = "app"
         state["tab"] = "Transactions"
         render()
@@ -956,7 +970,6 @@ async def main(page: ft.Page):
         saved_backend_url = await store.get("backend_url", "")
         if saved_backend_url and saved_backend_url.strip():
             state["backend_url"] = saved_backend_url.strip().rstrip("/")
-        # Otherwise keep the URL already defined in state.
         username = await store.get("username")
         if username:
             log.info("Found a saved local demo account")
@@ -1005,6 +1018,5 @@ async def main(page: ft.Page):
         render()
 
     await start()
-
 
 ft.run(main)
