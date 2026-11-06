@@ -473,6 +473,9 @@ async def main(page: ft.Page):
                 await asyncio.wait_for(camera.pause_preview(), timeout=2)
             except Exception as error:
                 log.warning("Receipt preview pause skipped: %s", type(error).__name__)
+            camera.preview_enabled = False
+            camera.visible = False
+            camera.update()
         except Exception as error:
             log.warning("Camera capture failed: %s", type(error).__name__)
             if state["camera"] is camera and state["route"] == "scanner":
@@ -561,10 +564,16 @@ async def main(page: ft.Page):
         render()
 
     async def retake_receipt():
+        camera = state.get("camera")
+        if not camera:
+            open_scanner()
+            return
+        camera.visible = True
+        camera.preview_enabled = True
         state["route"] = "scanner"
         render()
         try:
-            await state["camera"].resume_preview()
+            await camera.resume_preview()
         except Exception as error:
             log.warning("Camera preview could not resume: %s", error)
 
