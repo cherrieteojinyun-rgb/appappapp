@@ -1,12 +1,16 @@
 """Gemini connection for Python-hosted Flet development; never bundle a key."""
 import asyncio
 import json
+import logging
 import os
 import re
+import socket
 import urllib.error
 import urllib.request
 
 from finance import category_totals
+
+LOG = logging.getLogger('wangku.gemini')
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
@@ -60,7 +64,7 @@ def _request(payload):
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key}, method='POST',
     )
     try:
-        with urllib.request.urlopen(request, timeout=40) as response:
+        with urllib.request.urlopen(request, timeout=90) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 429:
@@ -72,8 +76,35 @@ def _request(payload):
         if error.code >= 500:
             raise CoachError(f'Google Gemini sedang terganggu (HTTP {error.code}). Cuba lagi kemudian; jika berulang, semak status Google AI dan log backend Render.') from None
         raise CoachError(f'Google Gemini menolak permintaan (HTTP {error.code}). Semak tetapan model, API dan format imej.') from None
-    except (urllib.error.URLError, TimeoutError, OSError):
-        raise CoachError('Sambungan gagal atau tamat masa. Semak internet dan cuba lagi.') from None
+    except urllib.error.URLError as error:
+        reason = error.reason
+        LOG.warning('Gemini connection failed (%s)', type(reason).__name__)
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            raise CoachError(
+                'Sambungan backend Render ke Google Gemini tamat masa. Cuba lagi; '
+                'jika berulang, semak log Render dan status Google AI.'
+            ) from None
+        if isinstance(reason, socket.gaierror):
+            raise CoachError(
+                'Backend Render tidak dapat mencari alamat Google Gemini (ralat DNS). '
+                'Semak rangkaian keluar Render dan cuba lagi.'
+            ) from None
+        raise CoachError(
+            'Backend Render tidak dapat menyambung ke Google Gemini. Semak rangkaian '
+            'keluar Render dan cuba lagi.'
+        ) from None
+    except (TimeoutError, socket.timeout):
+        LOG.warning('Gemini request timed out')
+        raise CoachError(
+            'Sambungan backend Render ke Google Gemini tamat masa. Cuba lagi; '
+            'jika berulang, semak log Render dan status Google AI.'
+        ) from None
+    except OSError as error:
+        LOG.warning('Gemini connection failed (%s)', type(error).__name__)
+        raise CoachError(
+            'Backend Render tidak dapat menyambung ke Google Gemini. Semak rangkaian '
+            'keluar Render dan cuba lagi.'
+        ) from None
     except (ValueError, TypeError):
         raise CoachError('Jawapan Gemini tidak dapat dibaca. Sila cuba lagi.') from None
     candidates = result.get('candidates') or []
