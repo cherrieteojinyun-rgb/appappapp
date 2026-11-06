@@ -64,7 +64,7 @@ def _request(payload):
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key}, method='POST',
     )
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with urllib.request.urlopen(request, timeout=180) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 429:
@@ -78,7 +78,11 @@ def _request(payload):
         raise CoachError(f'Google Gemini menolak permintaan (HTTP {error.code}). Semak tetapan model, API dan format imej.') from None
     except urllib.error.URLError as error:
         reason = error.reason
-        LOG.warning('Gemini connection failed (%s)', type(reason).__name__)
+        LOG.warning(
+            'Gemini connection failed (%s, errno=%s)',
+            type(reason).__name__,
+            getattr(reason, 'errno', None),
+        )
         if isinstance(reason, (TimeoutError, socket.timeout)):
             raise CoachError(
                 'Sambungan backend Render ke Google Gemini tamat masa. Cuba lagi; '
@@ -100,7 +104,11 @@ def _request(payload):
             'jika berulang, semak log Render dan status Google AI.'
         ) from None
     except OSError as error:
-        LOG.warning('Gemini connection failed (%s)', type(error).__name__)
+        LOG.warning(
+            'Gemini connection failed (%s, errno=%s)',
+            type(error).__name__,
+            getattr(error, 'errno', None),
+        )
         raise CoachError(
             'Backend Render tidak dapat menyambung ke Google Gemini. Semak rangkaian '
             'keluar Render dan cuba lagi.'
