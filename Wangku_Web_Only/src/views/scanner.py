@@ -48,10 +48,10 @@ def live(camera, status, on_capture, on_cancel):
 
 def review(
     photo,
-    description,
-    amount,
-    category,
+    items,
     message,
+    on_add_item,
+    on_remove_item,
     on_save,
     on_retake,
     on_cancel,
@@ -66,6 +66,35 @@ def review(
                 ft.ProgressBar(),
             ],
             spacing=14,
+        )
+
+    item_cards = []
+    for index, item in enumerate(items):
+        fields = [item["description"], item["amount"], item["category"]]
+        if len(items) > 1:
+            fields.append(
+                ft.TextButton(
+                    "Padam butiran",
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    on_click=lambda e, item_index=index: on_remove_item(item_index),
+                )
+            )
+        item_cards.append(
+            card(
+                ft.Column(
+                    [
+                        label(
+                            f"Butiran {index + 1}",
+                            size=15,
+                            weight=ft.FontWeight.BOLD,
+                        ),
+                        *fields,
+                    ],
+                    spacing=10,
+                ),
+                color=ft.Colors.WHITE,
+                padding=14,
+            )
         )
 
     return ft.Column(
@@ -107,15 +136,18 @@ def review(
                 ft.Column(
                     [
                         label("Butiran transaksi", size=16, weight=ft.FontWeight.BOLD),
-                        description,
-                        amount,
-                        category,
+                        *item_cards,
                         message,
                     ],
                     spacing=12,
                 ),
                 color=ft.Colors.WHITE,
                 padding=16,
+            ),
+            ft.OutlinedButton(
+                content=ft.Text("Tambah butiran transaksi"),
+                icon=ft.Icons.ADD,
+                on_click=on_add_item,
             ),
             ft.Row(
                 [
@@ -126,7 +158,7 @@ def review(
                     ),
                     ft.Container(expand=True),
                     primary_button(
-                        "Tambah transaksi",
+                        "Simpan transaksi",
                         on_save,
                         icon=ft.Icons.CHECK,
                     ),
@@ -134,6 +166,10 @@ def review(
                 wrap=True,
                 spacing=8,
             ),
+        ],
+        spacing=13,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
         ],
         spacing=13,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
