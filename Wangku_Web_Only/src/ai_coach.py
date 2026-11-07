@@ -2,7 +2,6 @@
 import asyncio
 import base64
 import json
-import math
 import sys
 import urllib.error
 import urllib.request
@@ -253,17 +252,30 @@ async def analyze_receipt(state, photo):
         result = json.loads(answer)
     except (TypeError, ValueError):
         raise CoachError("Jawapan analisis resit tidak dapat dibaca. Isi butiran secara manual.") from None
-    if (
-        not isinstance(result, dict)
-        or not isinstance(result.get("description"), str)
-        or result.get("category") not in ("Makanan", "Pengangkutan", "Hiburan", "Buku", "Lain-lain")
-    ):
+    if not isinstance(result, dict):
         raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
-    amount = result.get("amount")
-    if amount is not None and (
-        isinstance(amount, bool)
-        or not isinstance(amount, (int, float))
-        or (isinstance(amount, float) and not math.isfinite(amount))
-    ):
-        raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
+
+    items = result.get("items")
+    if items is None:
+        items = [dict(result)]
+    if not isinstance(items, list):
+        raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
+
+    categories = ("Makanan", "Pengangkutan", "Hiburan", "Buku", "Lain-lain")
+    for item in items:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("description"), str)
+            or item.get("category") not in categories
+        ):
+            raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
+        amount = item.get("amount")
+        if amount is not None and (
+            isinstance(amount, bool)
+            or not isinstance(amount, (int, float))
+            or not 0 < amount <= 1_000_000_000
+        ):
+            raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
+
+    result["items"] = items
     return result
