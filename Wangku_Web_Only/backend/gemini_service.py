@@ -12,7 +12,7 @@ import urllib.request
 from finance import category_totals
 
 LOG = logging.getLogger('wangku.gemini')
-REQUEST_TIMEOUT_SECONDS = 180
+REQUEST_TIMEOUT_SECONDS = 85
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
@@ -66,11 +66,15 @@ def _request(payload):
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key}, method='POST',
     )
     try:
+        deadline = time.monotonic() + REQUEST_TIMEOUT_SECONDS
         for attempt in range(4):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError
             try:
                 response = urllib.request.urlopen(
                     request,
-                    timeout=REQUEST_TIMEOUT_SECONDS,
+                    timeout=remaining,
                 )
                 break
             except urllib.error.HTTPError as error:
@@ -81,6 +85,15 @@ def _request(payload):
                     delay = min(max(int(retry_after), 1), 30) if retry_after else 2 ** attempt
                 except ValueError:
                     delay = 2 ** attempt
+                remaining = deadline - time.monotonic()
+                if remaining <= delay:
+                    LOG.warning(
+                        'Gemini retry budget exhausted after %ss (model=%s)',
+                        REQUEST_TIMEOUT_SECONDS,
+                        model,
+                    )
+                    error.close()
+                    raise TimeoutError
                 LOG.warning(
                     'Gemini returned HTTP 503; retrying (attempt %s of 4, delay %ss)',
                     attempt + 2,
@@ -109,7 +122,7 @@ def _request(payload):
         )
         if isinstance(reason, (TimeoutError, socket.timeout)):
             LOG.warning(
-                'Gemini request timed out after %ss (model=%s)',
+                'Gemini request timed out within %ss total budget (model=%s)',
                 REQUEST_TIMEOUT_SECONDS,
                 model,
             )
@@ -128,7 +141,7 @@ def _request(payload):
         ) from None
     except (TimeoutError, socket.timeout):
         LOG.warning(
-            'Gemini request timed out after %ss (model=%s)',
+            'Gemini request timed out within %ss total budget (model=%s)',
             REQUEST_TIMEOUT_SECONDS,
             model,
         )
