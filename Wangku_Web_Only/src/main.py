@@ -1,5 +1,4 @@
 import asyncio
-import math
 import hashlib
 import json
 import logging
@@ -521,16 +520,26 @@ async def main(page: ft.Page):
             log.info("Receipt analysis response received")
             if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
                 return
-            description = result.get("description")
-            amount = result.get("amount")
-            category = result.get("category")
-            receipt_item = state["receipt_items"][0]
-            if isinstance(description, str):
-                receipt_item["description"].value = description.strip()[:200]
-            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
-                receipt_item["amount"].value = f"{amount:.2f}"
-            if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                receipt_item["category"].value = category
+            analyzed_items = result["items"]
+            if analyzed_items:
+                state["receipt_items"] = [
+                    state["receipt_items"][0],
+                    *(
+                        new_receipt_item()
+                        for _ in range(len(analyzed_items) - 1)
+                    ),
+                ]
+                for receipt_item, analyzed_item in zip(
+                    state["receipt_items"], analyzed_items,
+                ):
+                    description = analyzed_item["description"]
+                    amount = analyzed_item["amount"]
+                    category = analyzed_item["category"]
+                    receipt_item["description"].value = description.strip()[:200]
+                    if amount is not None:
+                        receipt_item["amount"].value = f"{amount:.2f}"
+                    if category in CATEGORY_OPTIONS:
+                        receipt_item["category"].value = category
             review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
