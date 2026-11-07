@@ -141,18 +141,18 @@ async def main(page: ft.Page):
             elements.append(nav_bar())
         viewport_height = max((page.height or 620) - 36, 320)
         return ft.Row([
-            ft.Container(content=ft.Column(elements, spacing=8, expand=True), width=screen_width, height=viewport_height),
+            ft.Container(
+                content=ft.Column(elements, spacing=8, expand=True),
+                width=screen_width,
+                height=viewport_height,
+                bgcolor=ft.Colors.WHITE,
+            ),
         ], alignment=ft.MainAxisAlignment.CENTER, expand=True, vertical_alignment=ft.CrossAxisAlignment.STRETCH)
 
     def render():
         page.clean()
         route = state["route"]
-        page.bgcolor = (
-            ft.Colors.WHITE
-            if route in ("scanner", "receipt_review")
-            or (route == "app" and state["tab"] == "Transactions")
-            else BG
-        )
+        page.bgcolor = ft.Colors.WHITE
         log.debug("Rendering route=%s tab=%s viewport=%sx%s", route, state.get("tab"), page.width, page.height)
         if route == "welcome":
             view = auth.welcome(username_field, login_password, login_message, login, begin_registration, demo)
