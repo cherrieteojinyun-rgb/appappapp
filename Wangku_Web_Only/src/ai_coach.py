@@ -8,6 +8,9 @@ import urllib.request
 
 from finance import category_totals
 
+BACKEND_REQUEST_TIMEOUT_SECONDS = 150
+MAX_HISTORY_MESSAGES = 12
+
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
 Gunakan bahasa mesra, ringkas dan tidak menghakimi. Biasanya 2–5 ayat.
@@ -33,7 +36,7 @@ def build_payload(state, messages):
         'matlamat': state['goals'],
     }
     contents = []
-    for sender, text in messages[-20:]:
+    for sender, text in messages[-MAX_HISTORY_MESSAGES:]:
         if sender not in ('you', 'coach'):
             continue
         role = 'user' if sender == 'you' else 'model'
@@ -58,7 +61,10 @@ def _request(payload, url, token, endpoint="/coach"):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=BACKEND_REQUEST_TIMEOUT_SECONDS,
+        ) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         error_body = _read_error_body(error)
@@ -164,12 +170,22 @@ async def _request_async(payload, url, token, endpoint="/coach"):
     if sys.platform != "emscripten":
         return await asyncio.to_thread(_request, payload, url, token, endpoint)
 
-    result = await _browser_json_request(
-        url.rstrip("/") + endpoint,
-        "POST",
-        payload=payload,
-        token=token,
-    )
+    try:
+        result = await asyncio.wait_for(
+            _browser_json_request(
+                url.rstrip("/") + endpoint,
+                "POST",
+                payload=payload,
+                token=token,
+            ),
+            timeout=BACKEND_REQUEST_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        raise CoachError(
+            f"Permintaan kepada backend tamat masa selepas "
+            f"{BACKEND_REQUEST_TIMEOUT_SECONDS} saat. Cuba lagi; jika berulang, "
+            "semak log Render dan status Google AI."
+        ) from None
     answer = result.get("reply")
     if not isinstance(answer, str) or not answer.strip():
         raise CoachError("Tiada jawapan diterima. Cuba lagi.")
