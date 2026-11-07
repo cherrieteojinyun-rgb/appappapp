@@ -171,9 +171,14 @@ async def main(page: ft.Page):
             page.add(page_wrapper(view, width=content_width()))
         elif route == "receipt_review":
             view = scanner.review(
-                state["receipt_photo"], state["receipt_items"], state["receipt_message"],
-                add_receipt_item, save_receipt, retake_receipt,
-                close_scanner, state.get("receipt_busy", False),
+                state["receipt_photo"],
+                state["receipt_items"],
+                state["receipt_message"],
+                add_receipt_item,
+                save_receipt,
+                retake_receipt,
+                close_scanner,
+                state.get("receipt_busy", False),
             )
             page.add(page_wrapper(view, width=content_width()))
         elif route == "app":
