@@ -172,7 +172,7 @@ async def main(page: ft.Page):
         elif route == "receipt_review":
             view = scanner.review(
                 state["receipt_photo"], state["receipt_items"], state["receipt_message"],
-                add_receipt_item, remove_receipt_item, save_receipt, retake_receipt,
+                add_receipt_item, save_receipt, retake_receipt,
                 close_scanner, state.get("receipt_busy", False),
             )
             page.add(page_wrapper(view, width=content_width()))
@@ -567,15 +567,6 @@ async def main(page: ft.Page):
         state["receipt_items"].append(new_receipt_item())
         render()
 
-    def remove_receipt_item(event):
-        index = event.control.data
-        if not isinstance(index, int) or not 0 <= index < len(state["receipt_items"]):
-            return
-        if len(state["receipt_items"]) <= 1:
-            return
-        state["receipt_items"].pop(index)
-        render()
-
     async def close_scanner():
         camera = state.get("camera")
         if camera and state.get("camera_ready"):
@@ -608,10 +599,12 @@ async def main(page: ft.Page):
         for index, item in enumerate(state["receipt_items"], start=1):
             description = (item["description"].value or "").strip()
             amount = number(item["amount"].value)
+            if not description and amount is None:
+                continue
             if not description or amount is None or amount <= 0:
                 state["receipt_message"].value = (
                     f"Lengkapkan keterangan dan jumlah melebihi RM 0 "
-                    f"untuk butiran {index}, atau padam butiran itu."
+                    f"untuk butiran {index}, atau biarkan kedua-dua medan kosong."
                 )
                 page.update()
                 return
@@ -622,6 +615,10 @@ async def main(page: ft.Page):
                 "date": "Sebentar tadi · imbasan",
                 "amount": amount,
             })
+        if not entries:
+            state["receipt_message"].value = "Isi sekurang-kurangnya satu butiran transaksi sebelum menyimpan."
+            page.update()
+            return
         state["transactions"][0:0] = entries
         await persist_transactions()
         state["camera"] = None
