@@ -27,7 +27,7 @@ ALLOWED_ORIGINS = {
 def validate(data):
     context = data.get('context')
     contents = data.get('contents')
-    if not isinstance(context, dict) or not isinstance(contents, list) or not 1 <= len(contents) <= 20:
+    if not isinstance(context, dict) or not isinstance(contents, list) or not 1 <= len(contents) <= 12:
         raise ValueError()
     clean = []
     for item in contents:
