@@ -65,16 +65,25 @@ def _request(payload):
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key}, method='POST',
     )
     try:
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 response = urllib.request.urlopen(request, timeout=180)
                 break
             except urllib.error.HTTPError as error:
-                if error.code != 503 or attempt == 2:
+                if error.code != 503 or attempt == 3:
                     raise
-                LOG.warning('Gemini returned HTTP 503; retrying (attempt %s of 3)', attempt + 2)
+                retry_after = error.headers.get('Retry-After') if error.headers else None
+                try:
+                    delay = min(max(int(retry_after), 1), 30) if retry_after else 2 ** attempt
+                except ValueError:
+                    delay = 2 ** attempt
+                LOG.warning(
+                    'Gemini returned HTTP 503; retrying (attempt %s of 4, delay %ss)',
+                    attempt + 2,
+                    delay,
+                )
                 error.close()
-                time.sleep(2 ** attempt)
+                time.sleep(delay)
         with response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
@@ -179,3 +188,4 @@ def receipt_payload(data):
             },
         },
     }
+
