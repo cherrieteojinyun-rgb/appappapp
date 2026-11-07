@@ -1,7 +1,7 @@
 import flet as ft
 
 
-BG = ft.Colors.GREY_50
+BG = ft.Colors.WHITE
 SURFACE = ft.Colors.WHITE
 INK = ft.Colors.INDIGO_900
 MUTED = ft.Colors.BLUE_GREY_500
