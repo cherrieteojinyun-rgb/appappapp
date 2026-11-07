@@ -51,7 +51,6 @@ def review(
     items,
     message,
     on_add_item,
-    on_remove_item,
     on_save,
     on_retake,
     on_cancel,
@@ -71,15 +70,6 @@ def review(
     item_cards = []
     for index, item in enumerate(items):
         fields = [item["description"], item["amount"], item["category"]]
-        if len(items) > 1:
-            fields.append(
-                ft.TextButton(
-                    "Padam butiran",
-                    icon=ft.Icons.DELETE_OUTLINE,
-                    data=index,
-                    on_click=on_remove_item,
-                )
-            )
         item_cards.append(
             card(
                 ft.Column(
@@ -167,10 +157,6 @@ def review(
                 wrap=True,
                 spacing=8,
             ),
-        ],
-        spacing=13,
-        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-    )
         ],
         spacing=13,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
