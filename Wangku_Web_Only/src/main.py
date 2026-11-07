@@ -567,7 +567,10 @@ async def main(page: ft.Page):
         state["receipt_items"].append(new_receipt_item())
         render()
 
-    def remove_receipt_item(index):
+    def remove_receipt_item(event):
+        index = event.control.data
+        if not isinstance(index, int) or not 0 <= index < len(state["receipt_items"]):
+            return
         if len(state["receipt_items"]) <= 1:
             return
         state["receipt_items"].pop(index)
