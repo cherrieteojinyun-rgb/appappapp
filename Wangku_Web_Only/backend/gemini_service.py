@@ -12,6 +12,7 @@ import urllib.request
 from finance import category_totals
 
 LOG = logging.getLogger('wangku.gemini')
+REQUEST_TIMEOUT_SECONDS = 180
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
@@ -67,7 +68,10 @@ def _request(payload):
     try:
         for attempt in range(4):
             try:
-                response = urllib.request.urlopen(request, timeout=180)
+                response = urllib.request.urlopen(
+                    request,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
                 break
             except urllib.error.HTTPError as error:
                 if error.code != 503 or attempt == 3:
@@ -104,6 +108,11 @@ def _request(payload):
             getattr(reason, 'errno', None),
         )
         if isinstance(reason, (TimeoutError, socket.timeout)):
+            LOG.warning(
+                'Gemini request timed out after %ss (model=%s)',
+                REQUEST_TIMEOUT_SECONDS,
+                model,
+            )
             raise CoachError(
                 'Sambungan backend Render ke Google Gemini tamat masa. Cuba lagi; '
                 'jika berulang, semak log Render dan status Google AI.'
@@ -118,7 +127,11 @@ def _request(payload):
             'keluar Render dan cuba lagi.'
         ) from None
     except (TimeoutError, socket.timeout):
-        LOG.warning('Gemini request timed out')
+        LOG.warning(
+            'Gemini request timed out after %ss (model=%s)',
+            REQUEST_TIMEOUT_SECONDS,
+            model,
+        )
         raise CoachError(
             'Sambungan backend Render ke Google Gemini tamat masa. Cuba lagi; '
             'jika berulang, semak log Render dan status Google AI.'
