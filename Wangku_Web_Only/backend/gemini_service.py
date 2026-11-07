@@ -12,7 +12,7 @@ import urllib.request
 from finance import category_totals
 
 LOG = logging.getLogger('wangku.gemini')
-REQUEST_TIMEOUT_SECONDS = 85
+REQUEST_TIMEOUT_SECONDS = 20000000
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
