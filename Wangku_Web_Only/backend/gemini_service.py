@@ -12,7 +12,8 @@ import urllib.request
 from finance import category_totals
 
 LOG = logging.getLogger('wangku.gemini')
-REQUEST_TIMEOUT_SECONDS = 180
+REQUEST_TIMEOUT_SECONDS = 120
+MAX_HISTORY_MESSAGES = 12
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
@@ -39,7 +40,7 @@ def build_payload(state, messages):
         'matlamat': state['goals'],
     }
     contents = []
-    for sender, text in messages[-20:]:
+    for sender, text in messages[-MAX_HISTORY_MESSAGES:]:
         if sender not in ('you', 'coach'):
             continue
         role = 'user' if sender == 'you' else 'model'
@@ -78,7 +79,7 @@ def _request(payload):
                 )
                 break
             except urllib.error.HTTPError as error:
-                if error.code != 503 or attempt == 3:
+                if error.code not in (429, 503) or attempt == 3:
                     raise
                 retry_after = error.headers.get('Retry-After') if error.headers else None
                 try:
@@ -95,7 +96,8 @@ def _request(payload):
                     error.close()
                     raise TimeoutError
                 LOG.warning(
-                    'Gemini returned HTTP 503; retrying (attempt %s of 4, delay %ss)',
+                    'Gemini returned HTTP %s; retrying (attempt %s of 4, delay %ss)',
+                    error.code,
                     attempt + 2,
                     delay,
                 )
