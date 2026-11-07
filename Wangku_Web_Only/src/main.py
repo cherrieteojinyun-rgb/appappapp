@@ -71,9 +71,6 @@ async def main(page: ft.Page):
         "camera_ready": False,
         "camera_status": None,
         "receipt_photo": None,
-        "receipt_description": None,
-        "receipt_amount": None,
-        "receipt_category": None,
         "receipt_message": None,
         "onboarding": {"allowance": "", "frequency": "Weekly", "savings_target": "", "saved": "0", "dream_item": "", "dream_price": "", "months": "3"},
     }
@@ -150,6 +147,12 @@ async def main(page: ft.Page):
     def render():
         page.clean()
         route = state["route"]
+        page.bgcolor = (
+            ft.Colors.WHITE
+            if route in ("scanner", "receipt_review")
+            or (route == "app" and state["tab"] == "Transactions")
+            else BG
+        )
         log.debug("Rendering route=%s tab=%s viewport=%sx%s", route, state.get("tab"), page.width, page.height)
         if route == "welcome":
             view = auth.welcome(username_field, login_password, login_message, login, begin_registration, demo)
@@ -168,8 +171,9 @@ async def main(page: ft.Page):
             page.add(page_wrapper(view, width=content_width()))
         elif route == "receipt_review":
             view = scanner.review(
-                state["receipt_photo"], state["receipt_description"], state["receipt_amount"],
-                state["receipt_category"], state["receipt_message"], save_receipt, retake_receipt, close_scanner, state.get("receipt_busy", False),
+                state["receipt_photo"], state["receipt_items"], state["receipt_message"],
+                add_receipt_item, remove_receipt_item, save_receipt, retake_receipt,
+                close_scanner, state.get("receipt_busy", False),
             )
             page.add(page_wrapper(view, width=content_width()))
         elif route == "app":
@@ -498,25 +502,8 @@ async def main(page: ft.Page):
             "border_radius": 14,
             "content_padding": 14,
         }
-        state["receipt_description"] = ft.TextField(
-            label="Apa yang dibeli?", **receipt_field_style,
-        )
-        state["receipt_amount"] = ft.TextField(
-            label="Jumlah (RM)",
-            prefix=ft.Text("RM "),
-            keyboard_type=ft.KeyboardType.NUMBER,
-            **receipt_field_style,
-        )
-        state["receipt_category"] = ft.Dropdown(
-            value="Lain-lain", label="Kategori",
-            options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
-            filled=True,
-            fill_color=ft.Colors.WHITE,
-            border_color=ft.Colors.BLUE_GREY_100,
-            focused_border_color=PRIMARY,
-            border_radius=14,
-            content_padding=14,
-        )
+        state["receipt_field_style"] = receipt_field_style
+        state["receipt_items"] = [new_receipt_item()]
         state["receipt_message"] = ft.Text("Sedang menganalisis resit…", size=12, color=MUTED)
         review_message = state["receipt_message"]
         state["route"] = "receipt_review"
@@ -532,12 +519,13 @@ async def main(page: ft.Page):
             description = result.get("description")
             amount = result.get("amount")
             category = result.get("category")
+            receipt_item = state["receipt_items"][0]
             if isinstance(description, str):
-                state["receipt_description"].value = description.strip()[:200]
+                receipt_item["description"].value = description.strip()[:200]
             if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
-                state["receipt_amount"].value = f"{amount:.2f}"
+                receipt_item["amount"].value = f"{amount:.2f}"
             if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                state["receipt_category"].value = category
+                receipt_item["category"].value = category
             review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
@@ -549,6 +537,41 @@ async def main(page: ft.Page):
             if state["route"] == "receipt_review" and state["receipt_message"] is review_message:
                 state["receipt_busy"] = False
                 render()
+
+    def new_receipt_item():
+        field_style = state["receipt_field_style"]
+        return {
+            "description": ft.TextField(
+                label="Apa yang dibeli?", **field_style,
+            ),
+            "amount": ft.TextField(
+                label="Jumlah (RM)",
+                prefix=ft.Text("RM "),
+                keyboard_type=ft.KeyboardType.NUMBER,
+                **field_style,
+            ),
+            "category": ft.Dropdown(
+                value="Lain-lain",
+                label="Kategori",
+                options=[ft.DropdownOption(text=item) for item in CATEGORY_OPTIONS],
+                filled=True,
+                fill_color=ft.Colors.WHITE,
+                border_color=ft.Colors.BLUE_GREY_100,
+                focused_border_color=PRIMARY,
+                border_radius=14,
+                content_padding=14,
+            ),
+        }
+
+    def add_receipt_item():
+        state["receipt_items"].append(new_receipt_item())
+        render()
+
+    def remove_receipt_item(index):
+        if len(state["receipt_items"]) <= 1:
+            return
+        state["receipt_items"].pop(index)
+        render()
 
     async def close_scanner():
         camera = state.get("camera")
@@ -578,14 +601,25 @@ async def main(page: ft.Page):
             log.warning("Camera preview could not resume: %s", error)
 
     async def save_receipt():
-        description = (state["receipt_description"].value or "").strip()
-        amount = number(state["receipt_amount"].value)
-        if not description or amount is None or amount <= 0:
-            state["receipt_message"].value = "Masukkan keterangan dan jumlah yang melebihi RM 0."
-            page.update()
-            return
-        category = CATEGORY_OPTIONS.get(state["receipt_category"].value, "Other")
-        state["transactions"].insert(0, {"description": description, "category": category, "date": "Sebentar tadi · imbasan", "amount": amount})
+        entries = []
+        for index, item in enumerate(state["receipt_items"], start=1):
+            description = (item["description"].value or "").strip()
+            amount = number(item["amount"].value)
+            if not description or amount is None or amount <= 0:
+                state["receipt_message"].value = (
+                    f"Lengkapkan keterangan dan jumlah melebihi RM 0 "
+                    f"untuk butiran {index}, atau padam butiran itu."
+                )
+                page.update()
+                return
+            category = CATEGORY_OPTIONS.get(item["category"].value, "Other")
+            entries.append({
+                "description": description,
+                "category": category,
+                "date": "Sebentar tadi · imbasan",
+                "amount": amount,
+            })
+        state["transactions"][0:0] = entries
         await persist_transactions()
         state["camera"] = None
         state["camera_ready"] = False
