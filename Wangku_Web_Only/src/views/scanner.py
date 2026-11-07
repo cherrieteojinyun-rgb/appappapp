@@ -76,7 +76,8 @@ def review(
                 ft.TextButton(
                     "Padam butiran",
                     icon=ft.Icons.DELETE_OUTLINE,
-                    on_click=lambda e, item_index=index: on_remove_item(item_index),
+                    data=index,
+                    on_click=on_remove_item,
                 )
             )
         item_cards.append(
