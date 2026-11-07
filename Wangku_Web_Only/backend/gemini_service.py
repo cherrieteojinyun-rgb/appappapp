@@ -65,15 +65,16 @@ def _request(payload):
         headers={'Content-Type': 'application/json', 'x-goog-api-key': key}, method='POST',
     )
     try:
-        try:
-            response = urllib.request.urlopen(request, timeout=180)
-        except urllib.error.HTTPError as error:
-            if error.code != 503:
-                raise
-            LOG.warning('Gemini returned HTTP 503; retrying once')
-            error.close()
-            time.sleep(1)
-            response = urllib.request.urlopen(request, timeout=180)
+        for attempt in range(3):
+            try:
+                response = urllib.request.urlopen(request, timeout=180)
+                break
+            except urllib.error.HTTPError as error:
+                if error.code != 503 or attempt == 2:
+                    raise
+                LOG.warning('Gemini returned HTTP 503; retrying (attempt %s of 3)', attempt + 2)
+                error.close()
+                time.sleep(2 ** attempt)
         with response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
