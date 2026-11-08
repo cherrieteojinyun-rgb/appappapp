@@ -51,6 +51,7 @@ def review(
     items,
     message,
     on_add_item,
+    on_remove_item,
     on_save,
     on_retake,
     on_cancel,
@@ -70,14 +71,26 @@ def review(
     item_cards = []
     for index, item in enumerate(items):
         fields = [item["description"], item["amount"], item["category"]]
+        remove_button = ft.IconButton(
+            icon=ft.Icons.DELETE_OUTLINE,
+            tooltip="Buang butiran transaksi",
+            on_click=lambda event, item_index=index: on_remove_item(item_index),
+        )
         item_cards.append(
             card(
                 ft.Column(
                     [
-                        label(
-                            f"Butiran {index + 1}",
-                            size=15,
-                            weight=ft.FontWeight.BOLD,
+                        ft.Row(
+                            [
+                                label(
+                                    f"Butiran {index + 1}",
+                                    size=15,
+                                    weight=ft.FontWeight.BOLD,
+                                ),
+                                ft.Container(expand=True),
+                                remove_button,
+                            ],
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
                         *fields,
                     ],
@@ -140,22 +153,23 @@ def review(
                 icon=ft.Icons.ADD,
                 on_click=on_add_item,
             ),
-            ft.Row(
+            ft.Column(
                 [
                     ft.OutlinedButton(
                         content=ft.Text("Ambil semula"),
                         icon=ft.Icons.CAMERA_ALT,
                         on_click=on_retake,
+                        expand=True,
                     ),
-                    ft.Container(expand=True),
                     primary_button(
                         "Simpan transaksi",
                         on_save,
                         icon=ft.Icons.CHECK,
+                        expand=True,
                     ),
                 ],
-                wrap=True,
                 spacing=8,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             ),
         ],
         spacing=13,
