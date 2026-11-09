@@ -1108,7 +1108,7 @@ async def capture_photo():
             ft.Container(
                 content=ft.Column(
                     [
-                        mascot(150),
+                        ft.Text("WANGKU"),
                         ft.Row(
                             [wordmark(25)],
                             alignment=ft.MainAxisAlignment.CENTER,
