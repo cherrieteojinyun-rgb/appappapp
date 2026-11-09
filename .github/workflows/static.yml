@@ -42,26 +42,20 @@ jobs:
 
       - name: Build Flet app
         working-directory: Wangku_Web_Only
+        env:
+          FLET_CACHE_DIR: /home/runner/.flet/cache
+          CI: "false"
         run: |
-          export FLET_CACHE_DIR="$HOME/.flet/cache"
+          set -o pipefail
 
-          for attempt in 1 2 3 4; do
-            echo "Build attempt $attempt of 4"
+          echo "Checking Flutter installation..."
+          uv run --with flet-cli flet doctor -v 2>&1 || true
 
-            if uv run --with flet-cli flet build web --yes \
-              --base-url "/${GITHUB_REPOSITORY#*/}/" \
-              --route-url-strategy hash; then
-              exit 0
-            fi
-
-            if [ "$attempt" -lt 4 ]; then
-              echo "Build failed. Retrying in 20 seconds..."
-              sleep 20
-            fi
-          done
-
-          echo "Build failed after 4 attempts."
-          exit 1
+          echo "Starting Flet web build..."
+          uv run --with flet-cli flet build web --yes \
+            --verbose \
+            --base-url "/${GITHUB_REPOSITORY#*/}/" \
+            --route-url-strategy hash 2>&1 | tee flet-build.log
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
