@@ -619,7 +619,7 @@ review_message.value = (
         except Exception as error:
             log.warning("Camera preview could not resume: %s", error)
 
-    async def save_receipt():
+    async def save_receipt(e=None)::
         entries = []
         for index, item in enumerate(state["receipt_items"], start=1):
             description = (item["description"].value or "").strip()
