@@ -487,71 +487,35 @@ async def main(page: ft.Page):
             camera.update()
         except Exception as error:
             log.warning("Camera capture failed: %s", type(error).__name__)
-            if state["camera"] is camera and state["route"] == "scanner":
-                state["camera_status"].value = "Gambar tidak dapat diambil. Cuba lagi atau semak kebenaran kamera."
-                state["camera_status"].color = ft.Colors.ERROR
-                state["camera_status"].update()
-            return
-        finally:
-            if state["camera"] is camera:
-                state["camera_ready"] = True
-        if state["camera"] is not camera or state["route"] != "scanner":
-            return
 
-        state["receipt_photo"] = photo
-        receipt_field_style = {
-            "filled": True,
-            "fill_color": ft.Colors.WHITE,
-            "border_color": ft.Colors.BLUE_GREY_100,
-            "focused_border_color": PRIMARY,
-            "border_radius": 14,
-            "content_padding": 14,
-        }
-        state["receipt_field_style"] = receipt_field_style
-        state["receipt_items"] = [new_receipt_item()]
-        state["receipt_message"] = ft.Text("Sedang menganalisis resit…", size=12, color=MUTED)
-        review_message = state["receipt_message"]
-        state["route"] = "receipt_review"
-        state["receipt_busy"] = True
-        render()
-
-        try:
-            log.info("Receipt analysis started")
-            result = await analyze_receipt(state, photo)
-            log.info("Receipt analysis response received")
             if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
                 return
-items = result.get("items", [])
 
-state["receipt_items"] = [
-    new_receipt_item() for _ in items
-]
+            items = result.get("items", [])
 
-for receipt_item, item in zip(state["receipt_items"], items):
-    description = item.get("description")
-    amount = item.get("amount")
-    category = item.get("category")
+            state["receipt_items"] = [
+                new_receipt_item() for _ in items
+            ]
 
-    if isinstance(description, str):
-        receipt_item["description"].value = description
+            for receipt_item, item in zip(state["receipt_items"], items):
+                description = item.get("description")
+                amount = item.get("amount")
+                category = item.get("category")
 
-    if isinstance(amount, (int, float)) and not isinstance(amount, bool):
-        receipt_item["amount"].value = f"{amount:.2f}"
+                if isinstance(description, str):
+                    receipt_item["description"].value = description.strip()[:200]
 
-    if isinstance(category, str) and category in CATEGORY_OPTIONS:
-        receipt_item["category"].value = category
+                if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
+                    receipt_item["amount"].value = f"{amount:.2f}"
 
-review_message.value = (
-    f"AI menemui {len(items)} butiran pembelian. "
-    "Semak dan betulkan sebelum menyimpan."
-)
-            if isinstance(description, str):
-                receipt_item["description"].value = description.strip()[:200]
-            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
-                receipt_item["amount"].value = f"{amount:.2f}"
-            if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                receipt_item["category"].value = category
-            review_message.value = "Semak cadangan AI dan isi butiran yang masih kosong."
+                if isinstance(category, str) and category in CATEGORY_OPTIONS:
+                    receipt_item["category"].value = category
+
+            review_message.value = (
+                f"AI menemui {len(items)} butiran pembelian. "
+                "Semak dan betulkan sebelum menyimpan."
+            )
+
         except CoachError as error:
             log.warning("Receipt analysis: %s", error)
             review_message.value = f"{error} Anda boleh isi butiran secara manual."
