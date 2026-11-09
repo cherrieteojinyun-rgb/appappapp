@@ -1,3 +1,4 @@
+
 name: Deploy Flet Website
 
 on:
@@ -23,8 +24,20 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
+      - name: Cache Flet downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            ~/.cache/flet
+            ~/.flet
+            Wangku_Web_Only/build/flutter
+          key: flet-web-${{ runner.os }}-${{ hashFiles('Wangku_Web_Only/pyproject.toml', 'Wangku_Web_Only/requirements.txt') }}
+          restore-keys: |
+            flet-web-${{ runner.os }}-
+
       - name: Build Flet app
-        working-directory: "Wangku_Web_Only"
+        working-directory: Wangku_Web_Only
         run: |
           uv run --with flet-cli flet build web --yes \
             --base-url "/${GITHUB_REPOSITORY#*/}/" \
@@ -35,7 +48,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           name: github-pages-${{ github.run_attempt }}
-          path: "Wangku_Web_Only/build/web"
+          path: Wangku_Web_Only/build/web
 
       - uses: actions/deploy-pages@v4
         with:
