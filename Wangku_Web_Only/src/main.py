@@ -149,67 +149,118 @@ async def main(page: ft.Page):
             ),
         ], alignment=ft.MainAxisAlignment.CENTER, expand=True, vertical_alignment=ft.CrossAxisAlignment.STRETCH)
 
+
     def render():
-        page.clean()
         route = state["route"]
-        page.bgcolor = ft.Colors.WHITE
-        log.debug("Rendering route=%s tab=%s viewport=%sx%s", route, state.get("tab"), page.width, page.height)
-        if route == "welcome":
-            view = auth.welcome(username_field, login_password, login_message, login, begin_registration, demo)
-            page.add(page_wrapper(view))
-        elif route == "register":
-            page.add(page_wrapper(auth.registration(register_user, register_password, register_message, back_to_welcome, create_account)))
-        elif route == "onboarding":
-            page.add(page_wrapper(onboarding.onboarding(
-                state["onboarding_step"], state["onboarding"], onboarding_back, onboarding_next,
-                set_frequency, finish_onboarding,
-            )))
-        elif route == "admin":
-            page.add(page_wrapper(dashboard.admin_home(state["name"], logout)))
-        elif route == "scanner":
-            view = scanner.live(state["camera"], state["camera_status"], capture_photo, close_scanner)
-            page.add(page_wrapper(view, width=content_width()))
-        elif route == "receipt_review":
-            view = scanner.review(
-                state["receipt_photo"],
-                state["receipt_items"],
-                state["receipt_message"],
-                add_receipt_item,
-                save_receipt,
-                retake_receipt,
-                close_scanner,
-                state.get("receipt_busy", False),
-            )
-            page.add(page_wrapper(view, width=content_width()))
-        elif route == "app":
-            tab = state["tab"]
-            if tab == "Home":
-                view = dashboard.home(
-                    state["name"], state["allowance"], state["spent"], state["balance"],
-                    state["goal"], state["transactions"], state["chart_mode"], set_chart_mode,
-                    add_allowance, add_expense, open_coach, lambda: select_tab("Transactions"),
-                    lambda: select_tab("Savings"), lambda: select_tab("Profile"), lambda: select_tab("Shop"),
+        try:
+            page.clean()
+            page.bgcolor = ft.Colors.WHITE
+            log.info("Rendering route=%s", route)
+
+            if route == "welcome":
+                view = auth.welcome(
+                    username_field, login_password, login_message,
+                    login, begin_registration, demo
                 )
-            elif tab == "Transactions":
-                view = dashboard.transactions(
-                    state["transactions"], add_expense, open_scanner,
-                    delete_transaction, clear_transactions,
+                page.add(page_wrapper(view))
+
+            elif route == "register":
+                page.add(page_wrapper(auth.registration(
+                    register_user, register_password, register_message,
+                    back_to_welcome, create_account
+                )))
+
+            elif route == "onboarding":
+                page.add(page_wrapper(onboarding.onboarding(
+                    state["onboarding_step"], state["onboarding"],
+                    onboarding_back, onboarding_next,
+                    set_frequency, finish_onboarding,
+                )))
+
+            elif route == "admin":
+                page.add(page_wrapper(dashboard.admin_home(state["name"], logout)))
+
+            elif route == "scanner":
+                view = scanner.live(
+                    state["camera"], state["camera_status"],
+                    capture_photo, close_scanner
                 )
-            elif tab == "Savings":
-                view = dashboard.savings(
-                    state["goals"], state["active_goal_index"], select_goal,
-                    add_goal, edit_goal, delete_goal, add_savings_contribution,
+                page.add(page_wrapper(view, width=content_width()))
+
+            elif route == "receipt_review":
+                view = scanner.review(
+                    state["receipt_photo"], state["receipt_items"],
+                    state["receipt_message"], add_receipt_item,
+                    save_receipt, retake_receipt, close_scanner,
+                    state.get("receipt_busy", False),
                 )
-            elif tab == "Coach":
-                prompt = ft.TextField(hint_text="Tanya tentang pembelian atau matlamat…", border_radius=18, expand=True, on_submit=send_message, disabled=state["coach_busy"])
-                view = dashboard.coach(state["chat"], prompt, send_message, state["name"], state["coach_busy"], state["coach_error"], configure_ai)
-                state["coach_prompt"] = prompt
-            elif tab == "Shop":
-                view = shop.screen(lambda: select_tab("Home"))
+                page.add(page_wrapper(view, width=content_width()))
+
+            elif route == "app":
+                tab = state["tab"]
+
+                if tab == "Home":
+                    view = dashboard.home(
+                        state["name"], state["allowance"], state["spent"],
+                        state["balance"], state["goal"], state["transactions"],
+                        state["chart_mode"], set_chart_mode, add_allowance,
+                        add_expense, open_coach,
+                        lambda: select_tab("Transactions"),
+                        lambda: select_tab("Savings"),
+                        lambda: select_tab("Profile"),
+                        lambda: select_tab("Shop"),
+                    )
+
+                elif tab == "Transactions":
+                    view = dashboard.transactions(
+                        state["transactions"], add_expense, open_scanner,
+                        delete_transaction, clear_transactions,
+                    )
+
+                elif tab == "Savings":
+                    view = dashboard.savings(
+                        state["goals"], state["active_goal_index"],
+                        select_goal, add_goal, edit_goal,
+                        delete_goal, add_savings_contribution,
+                    )
+
+                elif tab == "Coach":
+                    prompt = ft.TextField(
+                        hint_text="Tanya tentang pembelian atau matlamat…",
+                        border_radius=18,
+                        expand=True,
+                        on_submit=send_message,
+                        disabled=state["coach_busy"],
+                    )
+                    view = dashboard.coach(
+                        state["chat"], prompt, send_message,
+                        state["name"], state["coach_busy"],
+                        state["coach_error"], configure_ai
+                    )
+                    state["coach_prompt"] = prompt
+
+                elif tab == "Shop":
+                    view = shop.screen(lambda: select_tab("Home"))
+
+                else:
+                    view = dashboard.profile(
+                        state["name"], state["role"], logout,
+                        restart_onboarding
+                    )
+
+                page.add(page_wrapper(
+                    view, width=content_width(), include_nav=True
+                ))
+
             else:
-                view = dashboard.profile(state["name"], state["role"], logout, restart_onboarding)
-            page.add(page_wrapper(view, width=content_width(), include_nav=True))
-        page.update()
+                raise ValueError(f"Unknown route: {route}")
+
+            page.update()
+            log.info("Rendered route=%s successfully", route)
+
+        except Exception:
+            log.exception("RENDER FAILED: route=%s", route)
+            raise
 
     def begin_registration():
         log.debug("Create account selected; opening student registration")
