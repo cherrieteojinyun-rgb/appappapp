@@ -159,7 +159,6 @@ def review(
                         content=ft.Text("Ambil semula"),
                         icon=ft.Icons.CAMERA_ALT,
                         on_click=on_retake,
-                        expand=True,
                     ),
                     primary_button(
                         "Simpan transaksi",
