@@ -463,69 +463,102 @@ async def main(page: ft.Page):
             state["camera_status"].color = ft.Colors.ERROR
             state["camera_status"].update()
 
-    async def capture_photo():
-        if not state["camera_ready"]:
-            state["camera_status"].value = "Benarkan akses kamera dan tunggu pratonton bermula."
-            state["camera_status"].update()
-            return
-        camera = state["camera"]
-        state["camera_ready"] = False
-        state["camera_status"].value = "Sedang mengambil gambar…"
+async def capture_photo():
+    if not state["camera_ready"]:
+        state["camera_status"].value = "Benarkan akses kamera dan tunggu pratonton bermula."
         state["camera_status"].update()
-        log.info("Receipt capture started")
-        try:
-            photo = await asyncio.wait_for(camera.take_picture(), timeout=20)
-            if not photo:
-                raise ValueError("Camera returned no photo")
-            log.info("Receipt photo captured")
-            try:
-                await asyncio.wait_for(camera.pause_preview(), timeout=2)
-            except Exception as error:
-                log.warning("Receipt preview pause skipped: %s", type(error).__name__)
-            camera.preview_enabled = False
-            camera.visible = False
-            camera.update()
-        except Exception as error:
-            log.warning("Camera capture failed: %s", type(error).__name__)
+        return
 
-            if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
-                return
+    camera = state["camera"]
+    state["camera_ready"] = False
+    state["camera_status"].value = "Sedang mengambil gambar…"
+    state["camera_status"].update()
+    log.info("Receipt capture started")
 
-            items = result.get("items", [])
+    try:
+        photo = await asyncio.wait_for(camera.take_picture(), timeout=20)
 
-            state["receipt_items"] = [
-                new_receipt_item() for _ in items
-            ]
+        if not photo:
+            raise ValueError("Camera returned no photo")
 
-            for receipt_item, item in zip(state["receipt_items"], items):
-                description = item.get("description")
-                amount = item.get("amount")
-                category = item.get("category")
+        log.info("Receipt photo captured")
 
-                if isinstance(description, str):
-                    receipt_item["description"].value = description.strip()[:200]
+    except Exception as error:
+        log.warning("Camera capture failed: %s", type(error).__name__)
 
-                if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
-                    receipt_item["amount"].value = f"{amount:.2f}"
+        state["camera_status"].value = (
+            "Gambar tidak dapat diambil. Cuba lagi atau semak kebenaran kamera."
+        )
+        state["camera_status"].color = ft.Colors.ERROR
+        state["camera_ready"] = True
+        state["camera_status"].update()
+        return
 
-                if isinstance(category, str) and category in CATEGORY_OPTIONS:
-                    receipt_item["category"].value = category
+    try:
+        await asyncio.wait_for(camera.pause_preview(), timeout=2)
+    except Exception as error:
+        log.warning("Receipt preview pause skipped: %s", type(error).__name__)
 
-            review_message.value = (
-                f"AI menemui {len(items)} butiran pembelian. "
-                "Semak dan betulkan sebelum menyimpan."
-            )
+    camera.preview_enabled = False
+    camera.visible = False
+    camera.update()
 
-        except CoachError as error:
-            log.warning("Receipt analysis: %s", error)
-            review_message.value = f"{error} Anda boleh isi butiran secara manual."
-        except Exception:
-            log.exception("Unexpected receipt analysis failure")
-            review_message.value = "Analisis resit gagal. Sila isi butiran secara manual."
-        finally:
-            if state["route"] == "receipt_review" and state["receipt_message"] is review_message:
-                state["receipt_busy"] = False
-                render()
+    if state["camera"] is not camera or state["route"] != "scanner":
+        return
+
+    state["receipt_photo"] = photo
+    state["receipt_items"] = [new_receipt_item()]
+    state["receipt_message"] = ft.Text(
+        "Sedang menganalisis resit…", size=12, color=MUTED
+    )
+
+    review_message = state["receipt_message"]
+    state["route"] = "receipt_review"
+    state["receipt_busy"] = True
+    render()
+
+    try:
+        log.info("Receipt analysis started")
+        result = await analyze_receipt(state, photo)
+        log.info("Receipt analysis response received")
+
+        if state["route"] != "receipt_review" or state["receipt_message"] is not review_message:
+            return
+
+        items = result.get("items", [])
+        state["receipt_items"] = [new_receipt_item() for _ in items]
+
+        for receipt_item, item in zip(state["receipt_items"], items):
+            description = item.get("description")
+            amount = item.get("amount")
+            category = item.get("category")
+
+            if isinstance(description, str):
+                receipt_item["description"].value = description.strip()[:200]
+
+            if type(amount) in (int, float) and 0 < amount <= 1_000_000_000 and math.isfinite(amount):
+                receipt_item["amount"].value = f"{amount:.2f}"
+
+            if isinstance(category, str) and category in CATEGORY_OPTIONS:
+                receipt_item["category"].value = category
+
+        review_message.value = (
+            f"AI menemui {len(items)} butiran pembelian. "
+            "Semak dan betulkan sebelum menyimpan."
+        )
+
+    except CoachError as error:
+        log.warning("Receipt analysis: %s", error)
+        review_message.value = f"{error} Anda boleh isi butiran secara manual."
+
+    except Exception:
+        log.exception("Unexpected receipt analysis failure")
+        review_message.value = "Analisis resit gagal. Sila isi butiran secara manual."
+
+    finally:
+        if state["route"] == "receipt_review" and state["receipt_message"] is review_message:
+            state["receipt_busy"] = False
+            render()
 
     def new_receipt_item():
         field_style = state["receipt_field_style"]
