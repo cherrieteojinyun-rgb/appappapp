@@ -35,6 +35,11 @@ jobs:
           restore-keys: |
             flet-cache-${{ runner.os }}-
 
+      - name: Check Flet version
+        working-directory: Wangku_Web_Only
+        run: |
+          uv run --with flet-cli flet --version
+
       - name: Build Flet app
         working-directory: Wangku_Web_Only
         run: |
@@ -50,7 +55,7 @@ jobs:
             fi
 
             if [ "$attempt" -lt 4 ]; then
-              echo "Retrying in 20 seconds..."
+              echo "Build failed. Retrying in 20 seconds..."
               sleep 20
             fi
           done
