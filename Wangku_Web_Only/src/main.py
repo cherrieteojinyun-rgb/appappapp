@@ -1106,7 +1106,8 @@ async def capture_photo():
         state["route"] = "welcome"
         render()
 
-    await start()
+    state["route"] = "welcome"
+render()
 
 
 ft.run(main)
