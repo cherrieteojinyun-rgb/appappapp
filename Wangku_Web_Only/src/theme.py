@@ -39,11 +39,12 @@ def card(content, *, color=SURFACE, padding=18, border_color=BORDER):
     )
 
 
-def primary_button(text, on_click, *, icon=None):
+def primary_button(text, on_click, *, icon=None, expand=None):
     return ft.Button(
         content=ft.Text(text, weight=ft.FontWeight.BOLD),
         icon=icon,
         on_click=on_click,
+        expand=expand,
         bgcolor=PRIMARY,
         color=ft.Colors.WHITE,
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=16), padding=ft.Padding.symmetric(horizontal=22, vertical=15)),
