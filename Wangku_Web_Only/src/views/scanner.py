@@ -165,7 +165,6 @@ def review(
                         "Simpan transaksi",
                         on_save,
                         icon=ft.Icons.CHECK,
-                        expand=True,
                     ),
                 ],
                 spacing=8,
