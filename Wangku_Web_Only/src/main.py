@@ -1099,48 +1099,7 @@ async def capture_photo():
                     render()
 
     async def start():
-        state["backend_url"] = await store.get("backend_url") or DEFAULT_BACKEND_URL
-        username = await store.get("username")
-        if username:
-            log.info("Found a saved local demo account")
-
-        page.add(
-            ft.Container(
-                content=ft.Column(
-                    [
-                        ft.Text("WANGKU"),
-                        ft.Row(
-                            [wordmark(25)],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                        ),
-                        label(
-                            "Wang anda. Masa depan anda.",
-                            size=14,
-                            color=MUTED,
-                        ),
-                    ],
-                    spacing=12,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                ),
-                alignment=ft.Alignment.CENTER,
-                expand=True,
-                opacity=0.25,
-                scale=0.76,
-                animate_opacity=ft.Animation(
-                    duration=850,
-                    curve=ft.AnimationCurve.EASE_OUT,
-                ),
-                animate_scale=ft.Animation(
-                    duration=850,
-                    curve=ft.AnimationCurve.EASE_OUT_BACK,
-                ),
-            )
-        )
-        page.update()
-
-        page.controls[0].opacity = 1
-        page.controls[0].scale = 1
+        page.add(ft.Text("WANGKU TEST", size=30))
         page.update()
 
         await asyncio.sleep(1.05)
