@@ -2,14 +2,12 @@
 import asyncio
 import base64
 import json
+import math
 import sys
 import urllib.error
 import urllib.request
 
 from finance import category_totals
-
-BACKEND_REQUEST_TIMEOUT_SECONDS = 150
-MAX_HISTORY_MESSAGES = 12
 
 SYSTEM = """Anda ialah Jurulatih Wangku, pembimbing pendidikan kewangan pelajar.
 Jawab dalam Bahasa Melayu sahaja walaupun pengguna menggunakan bahasa lain.
@@ -36,7 +34,7 @@ def build_payload(state, messages):
         'matlamat': state['goals'],
     }
     contents = []
-    for sender, text in messages[-MAX_HISTORY_MESSAGES:]:
+    for sender, text in messages[-20:]:
         if sender not in ('you', 'coach'):
             continue
         role = 'user' if sender == 'you' else 'model'
@@ -61,10 +59,7 @@ def _request(payload, url, token, endpoint="/coach"):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(
-            request,
-            timeout=BACKEND_REQUEST_TIMEOUT_SECONDS,
-        ) as response:
+        with urllib.request.urlopen(request, timeout=120) as response:
             result = json.load(response)
     except urllib.error.HTTPError as error:
         error_body = _read_error_body(error)
@@ -163,34 +158,104 @@ async def _browser_json_request(url, method, payload=None, token=None):
     return result
 
 
-async def _request_async(payload, url, token, endpoint="/coach"):
-    _backend_url(url)
-    if not token:
-        raise CoachError("Masukkan kod akses pelayan melalui Tetapan AI. Kod ini bukan kunci Gemini.")
-    if sys.platform != "emscripten":
-        return await asyncio.to_thread(_request, payload, url, token, endpoint)
+async def analyze_receipt(state, photo):
+    if isinstance(photo, bytes):
+        encoded = base64.b64encode(photo).decode("ascii")
+    elif isinstance(photo, str) and photo.startswith("data:image/") and ";base64," in photo:
+        encoded = photo.split(",", 1)[1]
+    elif isinstance(photo, str) and ":" not in photo:
+        encoded = photo
+    else:
+        raise CoachError("Pelayar tidak membekalkan data gambar. Sila isi butiran secara manual.")
+
+    if len(encoded) > 4 * ((4 * 1024 * 1024 + 2) // 3):
+        raise CoachError("Gambar terlalu besar. Sila isi butiran secara manual.")
 
     try:
-        result = await asyncio.wait_for(
-            _browser_json_request(
-                url.rstrip("/") + endpoint,
-                "POST",
-                payload=payload,
-                token=token,
-            ),
-            timeout=BACKEND_REQUEST_TIMEOUT_SECONDS,
-        )
-    except TimeoutError:
-        raise CoachError(
-            f"Permintaan kepada backend tamat masa selepas "
-            f"{BACKEND_REQUEST_TIMEOUT_SECONDS} saat. Cuba lagi; jika berulang, "
-            "semak log Render dan status Google AI."
-        ) from None
-    answer = result.get("reply")
-    if not isinstance(answer, str) or not answer.strip():
-        raise CoachError("Tiada jawapan diterima. Cuba lagi.")
-    return answer.strip()
+        image = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError):
+        raise CoachError("Format gambar tidak disokong. Sila isi butiran secara manual.") from None
 
+    if not 0 < len(image) <= 4 * 1024 * 1024:
+        raise CoachError("Gambar terlalu besar atau kosong. Sila isi butiran secara manual.")
+
+    if not (
+        image.startswith(b"\xff\xd8\xff")
+        or image.startswith(b"\x89PNG\r\n\x1a\n")
+        or (image.startswith(b"RIFF") and image[8:12] == b"WEBP")
+    ):
+        raise CoachError("Format gambar tidak disokong. Sila gunakan JPEG, PNG atau WebP.")
+
+    answer = await _request_async(
+        {"image": encoded},
+        state.get("backend_url", ""),
+        state.get("backend_token", ""),
+        "/receipt",
+    )
+
+    try:
+        result = json.loads(answer)
+    except (TypeError, ValueError):
+        raise CoachError("Jawapan analisis resit tidak dapat dibaca. Isi butiran secara manual.") from None
+
+    categories = (
+        "Makanan",
+        "Pengangkutan",
+        "Hiburan",
+        "Buku",
+        "Lain-lain",
+    )
+
+    if not isinstance(result, dict):
+        raise CoachError("Format jawapan analisis resit tidak sah.")
+
+    # Support both the new multiple-item format and the old single-item format.
+    if isinstance(result.get("items"), list):
+        raw_items = result["items"]
+    elif "description" in result:
+        raw_items = [result]
+    else:
+        raise CoachError("Tiada butiran pembelian diterima daripada AI.")
+
+    if not raw_items or len(raw_items) > 30:
+        raise CoachError("Bilangan butiran pembelian tidak sah.")
+
+    items = []
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+
+        description = item.get("description")
+        amount = item.get("amount")
+        category = item.get("category")
+
+        if not isinstance(description, str) or not description.strip():
+            continue
+
+        if category not in categories:
+            category = "Lain-lain"
+
+        if amount is not None:
+            if (
+                isinstance(amount, bool)
+                or not isinstance(amount, (int, float))
+                or not math.isfinite(amount)
+                or amount <= 0
+                or amount > 1_000_000_000
+            ):
+                amount = None
+
+        items.append({
+            "description": description.strip()[:200],
+            "amount": amount,
+            "category": category,
+        })
+
+    if not items:
+        raise CoachError("Tiada butiran pembelian yang sah ditemui. Isi secara manual.")
+
+    return {"items": items}
 
 async def check_backend(url):
     parsed = _backend_url(url)
@@ -268,30 +333,17 @@ async def analyze_receipt(state, photo):
         result = json.loads(answer)
     except (TypeError, ValueError):
         raise CoachError("Jawapan analisis resit tidak dapat dibaca. Isi butiran secara manual.") from None
-    if not isinstance(result, dict):
+    if (
+        not isinstance(result, dict)
+        or not isinstance(result.get("description"), str)
+        or result.get("category") not in ("Makanan", "Pengangkutan", "Hiburan", "Buku", "Lain-lain")
+    ):
         raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
-
-    items = result.get("items")
-    if items is None:
-        items = [dict(result)]
-    if not isinstance(items, list):
-        raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
-
-    categories = ("Makanan", "Pengangkutan", "Hiburan", "Buku", "Lain-lain")
-    for item in items:
-        if (
-            not isinstance(item, dict)
-            or not isinstance(item.get("description"), str)
-            or item.get("category") not in categories
-        ):
-            raise CoachError("Jawapan analisis resit tidak lengkap. Isi butiran secara manual.")
-        amount = item.get("amount")
-        if amount is not None and (
-            isinstance(amount, bool)
-            or not isinstance(amount, (int, float))
-            or not 0 < amount <= 1_000_000_000
-        ):
-            raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
-
-    result["items"] = items
+    amount = result.get("amount")
+    if amount is not None and (
+        isinstance(amount, bool)
+        or not isinstance(amount, (int, float))
+        or (isinstance(amount, float) and not math.isfinite(amount))
+    ):
+        raise CoachError("Jumlah resit tidak sah. Sila semak atau isi secara manual.")
     return result
